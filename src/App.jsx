@@ -8,10 +8,14 @@ import {
 // ---------- Config ----------
 const ESTADOS = [
   { id: 'sin_contactar', label: 'Sin contactar', color: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
-  { id: 'contactado', label: 'Contactado', color: 'bg-sky-50 text-sky-700 border-sky-200', dot: 'bg-sky-500' },
-  { id: 'en_conversacion', label: 'En conversación', color: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
-  { id: 'oferta', label: 'Oferta conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
-  { id: 'rechazada', label: 'Rechazada', color: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
+  { id: 'no_contesta', label: 'No lo cogen', color: 'bg-cyan-50 text-cyan-700 border-cyan-200', dot: 'bg-cyan-500' },
+  { id: 'mail_enviado', label: 'Mail enviado', color: 'bg-yellow-50 text-yellow-700 border-yellow-200', dot: 'bg-yellow-400' },
+  { id: 'mas_adelante', label: 'Para más adelante', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', dot: 'bg-fuchsia-500' },
+  { id: 'segundo_plazo', label: 'Segundo plazo', color: 'bg-amber-100 text-amber-900 border-amber-300', dot: 'bg-amber-700' },
+  { id: 'otra_provincia', label: 'Otra provincia', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
+  { id: 'interesados', label: 'Muy interesados', color: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
+  { id: 'beca', label: 'Beca conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+  { id: 'rechazada', label: 'No quieren', color: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
 ]
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 const fecha = (iso) =>
@@ -128,7 +132,7 @@ function Auth() {
 function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose }) {
   const nueva = !empresa
   const [f, setF] = useState(
-    empresa || { nombre: '', sector: '', contacto: '', email: '', telefono: '', responsable: null, estado: 'sin_contactar', notas: '' }
+    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', responsable: null, estado: 'sin_contactar', notas: '' }
   )
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const [err, setErr] = useState('')
@@ -140,14 +144,14 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
     try {
       if (nueva) {
         const { error } = await supabase.from('empresas').insert({
-          nombre: f.nombre.trim(), sector: f.sector, contacto: f.contacto, email: f.email,
+          nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email,
           telefono: f.telefono, responsable: f.responsable || null, estado: f.estado,
           notas: f.notas, actualizado_por: me.nombre,
         })
         if (error) throw error
       } else {
         const patch = isAdmin
-          ? { nombre: f.nombre.trim(), sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, responsable: f.responsable || null, estado: f.estado, notas: f.notas, actualizado_por: me.nombre }
+          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, responsable: f.responsable || null, estado: f.estado, notas: f.notas, actualizado_por: me.nombre }
           : { estado: f.estado, notas: f.notas, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
@@ -179,8 +183,9 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Empresa</Label><Input value={f.nombre} onChange={(e) => set('nombre', e.target.value)} /></div>
-                <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, telecos…" /></div>
+                <div><Label>CIF</Label><Input value={f.cif || ''} onChange={(e) => set('cif', e.target.value.toUpperCase())} placeholder="B12345678" /></div>
               </div>
+              <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, telecos…" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Persona de contacto</Label><Input value={f.contacto} onChange={(e) => set('contacto', e.target.value)} /></div>
                 <div><Label>Teléfono</Label><Input value={f.telefono} onChange={(e) => set('telefono', e.target.value)} /></div>
@@ -200,6 +205,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
             </>
           ) : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-1.5">
+              {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
               {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
               {f.contacto && <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-slate-400" />{f.contacto}</p>}
               {f.email && <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" />{f.email}</p>}
@@ -350,7 +356,7 @@ export default function App() {
     .filter((c) => !filtroPersona || c.responsable === filtroPersona)
     .filter((c) => {
       const q = busca.toLowerCase()
-      return !q || c.nombre.toLowerCase().includes(q) || (c.contacto || '').toLowerCase().includes(q) || (c.sector || '').toLowerCase().includes(q)
+      return !q || c.nombre.toLowerCase().includes(q) || (c.contacto || '').toLowerCase().includes(q) || (c.sector || '').toLowerCase().includes(q) || (c.cif || '').toLowerCase().includes(q)
     })
 
   return (
@@ -426,7 +432,7 @@ export default function App() {
             <div className="flex gap-2 mb-4">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, contacto o sector…" className="pl-9" />
+                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, CIF, contacto o sector…" className="pl-9" />
               </div>
               {isAdmin && (
                 <>
@@ -462,7 +468,7 @@ export default function App() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 truncate">{c.nombre}</p>
                       <p className="text-xs text-slate-500 truncate">
-                        {[c.sector, c.contacto].filter(Boolean).join(' · ') || '—'}
+                        {[c.cif, c.sector, c.contacto].filter(Boolean).join(' · ') || '—'}
                       </p>
                     </div>
                     {isAdmin && (
