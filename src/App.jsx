@@ -254,6 +254,42 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
   )
 }
 
+// ---------- Gráfica: nº de empresas por persona ----------
+function GraficaEmpresas({ users, companies }) {
+  const datos = users
+    .map((u) => ({ id: u.id, nombre: u.nombre, n: companies.filter((c) => c.responsable === u.id).length }))
+    .concat([{ id: 'na', nombre: 'Sin asignar', n: companies.filter((c) => !c.responsable).length }])
+    .filter((d) => d.n > 0 || d.id !== 'na')
+    .sort((a, b) => b.n - a.n)
+
+  const max = Math.max(1, ...datos.map((d) => d.n))
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6">
+      <div className="flex items-baseline justify-between mb-5">
+        <h3 className="font-bold text-slate-900">Empresas por persona</h3>
+        <span className="text-sm text-slate-500">{companies.length} en total</span>
+      </div>
+      <div className="space-y-3">
+        {datos.map((d) => (
+          <div key={d.id} className="flex items-center gap-3">
+            <span className={`w-32 shrink-0 text-sm truncate ${d.id === 'na' ? 'text-slate-400 italic' : 'text-slate-700'}`}>
+              {d.nombre}
+            </span>
+            <div className="flex-1 h-6 bg-slate-100 rounded-md overflow-hidden">
+              <div
+                className={`h-full rounded-md ${d.id === 'na' ? 'bg-slate-300' : 'bg-blue-600'}`}
+                style={{ width: `${(d.n / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-10 shrink-0 text-sm font-semibold text-slate-900 text-right tabular-nums">{d.n}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ---------- Equipo (solo admin) ----------
 function Equipo({ users, companies, me, onChanged }) {
   const [err, setErr] = useState('')
@@ -274,6 +310,9 @@ function Equipo({ users, companies, me, onChanged }) {
         contraseñas, usa el panel de Supabase (Authentication → Users).
       </div>
       {err && <p className="text-sm text-rose-600">{err}</p>}
+
+      <GraficaEmpresas users={users} companies={companies} />
+
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         {users.map((u) => (
           <div key={u.id} className="flex items-center justify-between px-6 py-4 border-b border-slate-100 last:border-0">
