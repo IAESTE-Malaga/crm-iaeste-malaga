@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
-  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download,
+  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -20,6 +20,25 @@ const ESTADOS = [
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 const fecha = (iso) =>
   iso ? new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
+
+const HOY = () => new Date().toISOString().slice(0, 10)
+const sumarDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+const fechaCorta = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : ''
+
+// Plantilla de primer contacto por email
+const plantillaEmail = (emp, yo) => {
+  const asunto = `IAESTE Madrid - Estudiantes internacionales en practicas para ${emp.nombre || 'su empresa'}`
+  const cuerpo = [
+    `Buenos dias${emp.contacto ? ' ' + emp.contacto : ''},`, '',
+    'Le escribo desde IAESTE Madrid, el comite de la Universidad Politecnica de Madrid de una asociacion internacional sin animo de lucro que gestiona practicas para estudiantes de ingenieria y ciencias.',
+    '',
+    'Nos encargamos de todo el proceso: seleccionamos al estudiante segun el perfil que necesiten, tramitamos la documentacion y le damos alojamiento y acompanamiento durante su estancia. Para la empresa no supone coste de intermediacion.',
+    '',
+    'Si les encaja, ?tendria unos minutos esta semana o la siguiente para contarselo por telefono?',
+    '', 'Un saludo,', yo || '', 'IAESTE Madrid - ETSIT UPM',
+  ].join('\n')
+  return `mailto:${emp.email || ''}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+}
 
 // ---------- UI básicos ----------
 const Badge = ({ estadoId }) => {
@@ -128,11 +147,39 @@ function Auth() {
   )
 }
 
+// ---------- Acciones rápidas: llamar / email / plantilla ----------
+function AccionesContacto({ emp, yo }) {
+  if (!emp.telefono && !emp.email) return null
+  const tel = String(emp.telefono || '').replace(/\s/g, '')
+  return (
+    <div className="flex flex-wrap gap-2">
+      {emp.telefono && (
+        <a href={`tel:${tel}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <Phone className="w-3.5 h-3.5" />Llamar
+        </a>
+      )}
+      {emp.email && (
+        <>
+          <a href={`mailto:${emp.email}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
+            <Mail className="w-3.5 h-3.5" />Email
+          </a>
+          <a href={plantillaEmail(emp, yo)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
+            <Send className="w-3.5 h-3.5" />Plantilla de contacto
+          </a>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ---------- Modal de empresa ----------
-function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose }) {
+function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDeleted, onClose }) {
   const nueva = !empresa
   const [f, setF] = useState(
-    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', responsable: null, estado: 'sin_contactar', notas: '' }
+    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', responsable: null, estado: 'sin_contactar', notas: '', proximo_contacto: null }
   )
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const [err, setErr] = useState('')
@@ -146,13 +193,13 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
         const { error } = await supabase.from('empresas').insert({
           nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email,
           telefono: f.telefono, responsable: f.responsable || null, estado: f.estado,
-          notas: f.notas, actualizado_por: me.nombre,
+          notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
         })
         if (error) throw error
       } else {
         const patch = isAdmin
-          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, responsable: f.responsable || null, estado: f.estado, notas: f.notas, actualizado_por: me.nombre }
-          : { estado: f.estado, notas: f.notas, actualizado_por: me.nombre }
+          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, responsable: f.responsable || null, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          : { estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
       }
@@ -163,6 +210,10 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
       setBusy(false)
     }
   }
+
+  const cifDup = nueva && (f.cif || '').trim().length > 5
+    ? todas.find((c) => (c.cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === f.cif.replace(/[^A-Z0-9]/gi, '').toUpperCase())
+    : null
 
   const eliminar = async () => {
     if (!confirm('¿Eliminar esta empresa?')) return
@@ -185,12 +236,19 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
                 <div><Label>Empresa</Label><Input value={f.nombre} onChange={(e) => set('nombre', e.target.value)} /></div>
                 <div><Label>CIF</Label><Input value={f.cif || ''} onChange={(e) => set('cif', e.target.value.toUpperCase())} placeholder="B12345678" /></div>
               </div>
+              {cifDup && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  Ese CIF ya existe en el CRM: <strong>{cifDup.nombre}</strong>. Puedes guardar igualmente, pero comprueba que no sea la misma empresa.
+                </p>
+              )}
               <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, telecos…" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Persona de contacto</Label><Input value={f.contacto} onChange={(e) => set('contacto', e.target.value)} /></div>
                 <div><Label>Teléfono</Label><Input value={f.telefono} onChange={(e) => set('telefono', e.target.value)} /></div>
               </div>
               <div><Label>Email</Label><Input value={f.email} onChange={(e) => set('email', e.target.value)} /></div>
+              <AccionesContacto emp={f} yo={me.nombre} />
               <div>
                 <Label>Responsable</Label>
                 <select
@@ -208,8 +266,9 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
               {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
               {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
               {f.contacto && <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-slate-400" />{f.contacto}</p>}
-              {f.email && <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" />{f.email}</p>}
-              {f.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{f.telefono}</p>}
+              {f.email && <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" /><a href={`mailto:${f.email}`} className="text-blue-700 hover:underline">{f.email}</a></p>}
+              {f.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /><a href={`tel:${String(f.telefono).replace(/\s/g, '')}`} className="text-blue-700 hover:underline">{f.telefono}</a></p>}
+              <div className="pt-1"><AccionesContacto emp={f} yo={me.nombre} /></div>
             </div>
           )}
           <div>
@@ -226,6 +285,25 @@ function EmpresaModal({ empresa, users, isAdmin, me, onSaved, onDeleted, onClose
                   {e.label}
                 </button>
               ))}
+            </div>
+          </div>
+          <div>
+            <Label>Próximo contacto</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={f.proximo_contacto || ''}
+                onChange={(e) => set('proximo_contacto', e.target.value || null)}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+              {[['+1 sem', 7], ['+2 sem', 14], ['+1 mes', 30]].map(([t, n]) => (
+                <button key={t} onClick={() => set('proximo_contacto', sumarDias(n))}
+                  className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs text-slate-600 hover:bg-slate-50">{t}</button>
+              ))}
+              {f.proximo_contacto && (
+                <button onClick={() => set('proximo_contacto', null)}
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs text-slate-400 hover:bg-slate-50">Quitar</button>
+              )}
             </div>
           </div>
           <div>
@@ -417,6 +495,26 @@ function Equipo({ users, companies, me, onChanged }) {
   )
 }
 
+// ---------- Exportar empresas a CSV (se abre en Excel) ----------
+function exportarEmpresas(lista, nombreDe) {
+  const cab = ['Empresa', 'CIF', 'Sector', 'Contacto', 'Telefono', 'Email', 'Estado', 'Responsable', 'Proximo contacto', 'Notas']
+  const filas = lista.map((c) => [
+    c.nombre, c.cif || '', c.sector || '', c.contacto || '', c.telefono || '', c.email || '',
+    estadoDe(c.estado).label, nombreDe(c.responsable), c.proximo_contacto || '',
+    (c.notas || '').replace(/\n/g, ' | '),
+  ])
+  const csv = [cab, ...filas]
+    .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `empresas-iaeste-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ---------- App ----------
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = cargando
@@ -427,6 +525,7 @@ export default function App() {
   const [busca, setBusca] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroPersona, setFiltroPersona] = useState('')
+  const [agenda, setAgenda] = useState('') // '' | 'hoy' | 'atrasadas'
   const [modal, setModal] = useState(null) // null | 'nueva' | empresa
   const [aviso, setAviso] = useState('')
 
@@ -462,7 +561,16 @@ export default function App() {
   const isAdmin = me.rol === 'admin'
   const nombreDe = (id) => users.find((u) => u.id === id)?.nombre || 'Sin asignar'
 
+  const hoy = HOY()
+  const nAtrasadas = companies.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
+  const nHoy = companies.filter((c) => c.proximo_contacto === hoy).length
+
   const visibles = companies
+    .filter((c) => {
+      if (agenda === 'hoy') return c.proximo_contacto && c.proximo_contacto <= hoy
+      if (agenda === 'atrasadas') return c.proximo_contacto && c.proximo_contacto < hoy
+      return true
+    })
     .filter((c) => !filtroEstado || c.estado === filtroEstado)
     .filter((c) => !filtroPersona || c.responsable === filtroPersona)
     .filter((c) => {
@@ -516,6 +624,34 @@ export default function App() {
           <Equipo users={users} companies={companies} me={me} onChanged={cargar} />
         ) : (
           <>
+            {(nHoy + nAtrasadas) > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => setAgenda(agenda === 'hoy' ? '' : 'hoy')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${
+                    agenda === 'hoy' ? 'bg-blue-700 text-white border-blue-700' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  <CalendarClock className="w-3.5 h-3.5" />Para hoy · {nHoy + nAtrasadas}
+                </button>
+                {nAtrasadas > 0 && (
+                  <button
+                    onClick={() => setAgenda(agenda === 'atrasadas' ? '' : 'atrasadas')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                      agenda === 'atrasadas' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                    }`}
+                  >
+                    Atrasadas · {nAtrasadas}
+                  </button>
+                )}
+                {agenda && (
+                  <button onClick={() => setAgenda('')} className="px-3 py-1.5 rounded-full text-xs font-medium text-slate-500 hover:bg-slate-100">
+                    Ver todas
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2 mb-5">
               <button
                 onClick={() => setFiltroEstado('')}
@@ -555,6 +691,13 @@ export default function App() {
                     <option value="">Todo el equipo</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
+                  <button
+                    onClick={() => exportarEmpresas(visibles, nombreDe)}
+                    title="Exportar a Excel"
+                    className="px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" /><span className="hidden lg:inline">Exportar</span>
+                  </button>
                   <Btn onClick={() => setModal('nueva')}><Plus className="w-4 h-4" /><span className="hidden sm:inline">Empresa</span></Btn>
                 </>
               )}
@@ -587,6 +730,17 @@ export default function App() {
                         <User className="w-3.5 h-3.5" />{nombreDe(c.responsable)}
                       </span>
                     )}
+                    {c.proximo_contacto && (
+                      <span className={`hidden sm:inline-flex items-center gap-1 text-xs font-medium shrink-0 px-2 py-0.5 rounded-full border ${
+                        c.proximo_contacto < hoy
+                          ? 'bg-rose-50 text-rose-700 border-rose-200'
+                          : c.proximo_contacto === hoy
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-slate-50 text-slate-500 border-slate-200'
+                      }`}>
+                        <CalendarClock className="w-3 h-3" />{fechaCorta(c.proximo_contacto)}
+                      </span>
+                    )}
                     <Badge estadoId={c.estado} />
                     <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                   </button>
@@ -603,6 +757,7 @@ export default function App() {
           users={users}
           isAdmin={isAdmin}
           me={me}
+          todas={companies}
           onSaved={() => { setModal(null); cargar(); flash('Guardado ✓') }}
           onDeleted={() => { setModal(null); cargar(); flash('Empresa eliminada') }}
           onClose={() => setModal(null)}
