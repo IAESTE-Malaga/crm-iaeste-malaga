@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
-  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound,
+  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -263,12 +263,84 @@ function GraficaEmpresas({ users, companies }) {
     .sort((a, b) => b.n - a.n)
 
   const max = Math.max(1, ...datos.map((d) => d.n))
+  const hoy = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })
+
+  const descargar = (blob, nombre) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = nombre
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportarCSV = () => {
+    const filas = [['Persona', 'Empresas'], ...datos.map((d) => [d.nombre, d.n])]
+    const csv = filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n')
+    descargar(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }), 'empresas-por-persona.csv')
+  }
+
+  const exportarPNG = () => {
+    const E = 2 // escala para que se vea nítido
+    const F = 34, TOP = 96, PAD = 28, ANCHO = 900
+    const alto = TOP + datos.length * F + 46
+    const cv = document.createElement('canvas')
+    cv.width = ANCHO * E
+    cv.height = alto * E
+    const g = cv.getContext('2d')
+    g.scale(E, E)
+
+    g.fillStyle = '#ffffff'
+    g.fillRect(0, 0, ANCHO, alto)
+
+    g.fillStyle = '#0f172a'
+    g.font = 'bold 20px system-ui, sans-serif'
+    g.fillText('Empresas por persona', PAD, 42)
+    g.fillStyle = '#64748b'
+    g.font = '13px system-ui, sans-serif'
+    g.fillText(`CRM IAESTE · ${companies.length} empresas · ${hoy}`, PAD, 66)
+
+    const xNom = PAD, anchoNom = 190
+    const xBar = xNom + anchoNom + 12
+    const anchoBar = ANCHO - xBar - PAD - 50
+
+    datos.forEach((d, i) => {
+      const y = TOP + i * F
+      g.fillStyle = d.id === 'na' ? '#94a3b8' : '#334155'
+      g.font = (d.id === 'na' ? 'italic ' : '') + '14px system-ui, sans-serif'
+      let nom = d.nombre
+      while (g.measureText(nom).width > anchoNom && nom.length > 3) nom = nom.slice(0, -1)
+      if (nom !== d.nombre) nom = nom.slice(0, -1) + '…'
+      g.fillText(nom, xNom, y + 16)
+
+      g.fillStyle = '#f1f5f9'
+      g.fillRect(xBar, y + 2, anchoBar, 20)
+      g.fillStyle = d.id === 'na' ? '#cbd5e1' : '#2563eb'
+      g.fillRect(xBar, y + 2, Math.max(2, (d.n / max) * anchoBar), 20)
+
+      g.fillStyle = '#0f172a'
+      g.font = 'bold 14px system-ui, sans-serif'
+      g.textAlign = 'right'
+      g.fillText(String(d.n), ANCHO - PAD, y + 17)
+      g.textAlign = 'left'
+    })
+
+    cv.toBlob((b) => descargar(b, 'empresas-por-persona.png'), 'image/png')
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6">
-      <div className="flex items-baseline justify-between mb-5">
+      <div className="flex items-baseline justify-between mb-5 gap-3 flex-wrap">
         <h3 className="font-bold text-slate-900">Empresas por persona</h3>
-        <span className="text-sm text-slate-500">{companies.length} en total</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500 mr-1">{companies.length} en total</span>
+          <button onClick={exportarPNG} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+            <Download className="w-3.5 h-3.5" />PNG
+          </button>
+          <button onClick={exportarCSV} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+            <Download className="w-3.5 h-3.5" />CSV
+          </button>
+        </div>
       </div>
       <div className="space-y-3">
         {datos.map((d) => (
