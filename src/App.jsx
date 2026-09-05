@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet,
+  History, UserPlus, Inbox,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -18,6 +19,27 @@ const ESTADOS = [
   { id: 'rechazada', label: 'No quieren', color: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
 ]
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
+
+// Cuántas empresas sin contactar se asignan de golpe y a partir de cuántas se avisa
+const LOTE = 5
+const AVISO_POCAS = 2
+
+// Acciones del historial
+const ACCIONES = {
+  alta: { label: 'Alta', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  estado: { label: 'Estado', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  nota: { label: 'Nota', color: 'bg-slate-100 text-slate-600 border-slate-200' },
+  agenda: { label: 'Agenda', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  responsable: { label: 'Responsable', color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  datos: { label: 'Datos', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+}
+const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
+
+// El detalle de los cambios de estado viene con los ids crudos ("mail_enviado → beca")
+const detalleLegible = (h) =>
+  h.accion === 'estado' && h.estado_anterior && h.estado_nuevo
+    ? `${estadoDe(h.estado_anterior).label} → ${estadoDe(h.estado_nuevo).label}`
+    : h.detalle
 const fecha = (iso) =>
   iso ? new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
@@ -184,15 +206,33 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [hist, setHist] = useState(null) // null = cargando
+
+  useEffect(() => {
+    if (nueva) { setHist([]); return }
+    supabase
+      .from('historial')
+      .select('*')
+      .eq('empresa_id', empresa.id)
+      .order('creado', { ascending: false })
+      .limit(50)
+      .then(({ data }) => setHist(data || []))
+  }, [nueva, empresa?.id])
+
+  // Un miembro puede rellenar todos los campos al CREAR una empresa,
+  // pero al editar una existente solo toca estado, notas y próximo contacto.
+  const camposEditables = isAdmin || nueva
 
   const guardar = async () => {
-    if (isAdmin && !f.nombre.trim()) { setErr('La empresa necesita un nombre.'); return }
+    if (camposEditables && !f.nombre.trim()) { setErr('La empresa necesita un nombre.'); return }
     setBusy(true); setErr('')
     try {
       if (nueva) {
         const { error } = await supabase.from('empresas').insert({
           nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email,
-          telefono: f.telefono, responsable: f.responsable || null, estado: f.estado,
+          telefono: f.telefono,
+          responsable: isAdmin ? (f.responsable || null) : me.id,
+          estado: f.estado,
           notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
         })
         if (error) throw error
@@ -230,7 +270,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-4">
-          {isAdmin ? (
+          {camposEditables ? (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Empresa</Label><Input value={f.nombre} onChange={(e) => set('nombre', e.target.value)} /></div>
@@ -249,17 +289,23 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               </div>
               <div><Label>Email</Label><Input value={f.email} onChange={(e) => set('email', e.target.value)} /></div>
               <AccionesContacto emp={f} yo={me.nombre} />
-              <div>
-                <Label>Responsable</Label>
-                <select
-                  value={f.responsable || ''}
-                  onChange={(e) => set('responsable', e.target.value || null)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-                >
-                  <option value="">Sin asignar</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                </select>
-              </div>
+              {isAdmin ? (
+                <div>
+                  <Label>Responsable</Label>
+                  <select
+                    value={f.responsable || ''}
+                    onChange={(e) => set('responsable', e.target.value || null)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  >
+                    <option value="">Sin asignar</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Se te asignará a ti como responsable. Después solo podrás cambiar estado, notas y próximo contacto: si hay que corregir algún dato, pídeselo a un admin.
+                </p>
+              )}
             </>
           ) : (
             <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-1.5">
@@ -316,6 +362,32 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none"
             />
           </div>
+          {!nueva && (
+            <div className="pt-2 border-t border-slate-100">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                <History className="w-3.5 h-3.5" />Historial
+              </p>
+              {hist === null ? (
+                <p className="text-xs text-slate-400">Cargando…</p>
+              ) : hist.length === 0 ? (
+                <p className="text-xs text-slate-400">Sin movimientos registrados todavía.</p>
+              ) : (
+                <ol className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {hist.map((h) => (
+                    <li key={h.id} className="flex gap-2 text-xs">
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe(h.accion).color}`}>
+                        {accionDe(h.accion).label}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="text-slate-700 break-words">{detalleLegible(h)}</span>
+                        <span className="block text-slate-400">{h.usuario_nombre} · {fecha(h.creado)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
           {f.actualizado && !nueva && (
             <p className="text-xs text-slate-400">Última actualización: {fecha(f.actualizado)}{f.actualizado_por ? ` · ${f.actualizado_por}` : ''}</p>
           )}
@@ -440,10 +512,126 @@ function GraficaEmpresas({ users, companies }) {
   )
 }
 
+// ---------- Actividad del equipo (a partir del historial) ----------
+function Actividad({ users }) {
+  const [dias, setDias] = useState(30)
+  const [filas, setFilas] = useState(null)
+
+  useEffect(() => {
+    const desde = new Date(Date.now() - dias * 86400000).toISOString()
+    setFilas(null)
+    supabase
+      .from('historial')
+      .select('usuario_id, usuario_nombre, accion')
+      .gte('creado', desde)
+      .limit(10000)
+      .then(({ data }) => setFilas(data || []))
+  }, [dias])
+
+  const resumen = (filas || []).reduce((acc, h) => {
+    const k = h.usuario_id || h.usuario_nombre
+    acc[k] = acc[k] || { nombre: h.usuario_nombre, total: 0, estado: 0, alta: 0, nota: 0 }
+    acc[k].total++
+    if (acc[k][h.accion] !== undefined) acc[k][h.accion]++
+    return acc
+  }, {})
+  const lista = Object.values(resumen).sort((a, b) => b.total - a.total)
+
+  const exportar = () => {
+    const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Total acciones']
+    const csv = [cab, ...lista.map((d) => [d.nombre, d.alta, d.estado, d.nota, d.total])]
+      .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
+      .join('\n')
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `actividad-${dias}dias-${HOY()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6">
+      <div className="flex items-baseline justify-between mb-5 gap-3 flex-wrap">
+        <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
+          <History className="w-4 h-4 text-slate-400" />Actividad
+        </h3>
+        <div className="flex items-center gap-2">
+          <select
+            value={dias}
+            onChange={(e) => setDias(Number(e.target.value))}
+            className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-white"
+          >
+            <option value={7}>Últimos 7 días</option>
+            <option value={30}>Últimos 30 días</option>
+            <option value={90}>Últimos 90 días</option>
+            <option value={365}>Último año</option>
+          </select>
+          <button onClick={exportar} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+            <Download className="w-3.5 h-3.5" />CSV
+          </button>
+        </div>
+      </div>
+      {filas === null ? (
+        <p className="text-sm text-slate-400">Cargando…</p>
+      ) : lista.length === 0 ? (
+        <p className="text-sm text-slate-400">Ningún movimiento en este periodo.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
+              <th className="text-left font-medium pb-2">Persona</th>
+              <th className="font-medium pb-2">Altas</th>
+              <th className="font-medium pb-2">Estados</th>
+              <th className="font-medium pb-2">Notas</th>
+              <th className="font-medium pb-2">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((d, i) => (
+              <tr key={i} className="border-t border-slate-100 text-right tabular-nums">
+                <td className="text-left py-2 text-slate-700">{d.nombre}</td>
+                <td className="text-slate-500">{d.alta}</td>
+                <td className="text-slate-500">{d.estado}</td>
+                <td className="text-slate-500">{d.nota}</td>
+                <td className="font-semibold text-slate-900">{d.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="text-xs text-slate-400 mt-4">
+        Cada fila del historial cuenta como una acción: dar de alta una empresa, cambiar su estado,
+        escribir una nota o mover el recordatorio. Sirve como base objetiva para repartir puntos.
+      </p>
+    </div>
+  )
+}
+
 // ---------- Equipo (solo admin) ----------
 function Equipo({ users, companies, me, onChanged }) {
   const [err, setErr] = useState('')
+  const [asignando, setAsignando] = useState('')
   const cuenta = (id) => companies.filter((c) => c.responsable === id).length
+  const sinContactar = (id) => companies.filter((c) => c.responsable === id && c.estado === 'sin_contactar').length
+  const libres = companies.filter((c) => !c.responsable && c.estado === 'sin_contactar')
+
+  const asignarLote = async (u) => {
+    setErr(''); setAsignando(u.id)
+    const ids = libres.slice(0, LOTE).map((c) => c.id)
+    if (ids.length === 0) {
+      setErr('No quedan empresas sin asignar en estado «Sin contactar».')
+      setAsignando('')
+      return
+    }
+    const { error } = await supabase
+      .from('empresas')
+      .update({ responsable: u.id, actualizado_por: me.nombre })
+      .in('id', ids)
+    setAsignando('')
+    if (error) setErr(error.message)
+    else onChanged()
+  }
 
   const cambiarRol = async (u, rol) => {
     setErr('')
@@ -463,6 +651,13 @@ function Equipo({ users, companies, me, onChanged }) {
 
       <GraficaEmpresas users={users} companies={companies} />
 
+      <Actividad users={users} />
+
+      <p className="text-xs text-slate-500 px-1">
+        Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar».
+        El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona.
+      </p>
+
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         {users.map((u) => (
           <div key={u.id} className="flex items-center justify-between px-6 py-4 border-b border-slate-100 last:border-0">
@@ -476,9 +671,27 @@ function Equipo({ users, companies, me, onChanged }) {
                   {u.rol === 'admin' && <Shield className="w-3.5 h-3.5 text-blue-600" />}
                   {u.id === me.id && <span className="text-xs text-slate-400">(tú)</span>}
                 </p>
-                <p className="text-xs text-slate-500">{cuenta(u.id)} empresa{cuenta(u.id) !== 1 ? 's' : ''} asignada{cuenta(u.id) !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-slate-500">
+                  {cuenta(u.id)} asignada{cuenta(u.id) !== 1 ? 's' : ''} ·{' '}
+                  <span className={sinContactar(u.id) === 0 ? 'text-amber-700 font-semibold' : ''}>
+                    {sinContactar(u.id)} sin contactar
+                  </span>
+                </p>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => asignarLote(u)}
+                disabled={asignando === u.id || libres.length === 0}
+                title={`Asignarle ${LOTE} empresas sin contactar del bote común`}
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium inline-flex items-center gap-1 disabled:opacity-40 ${
+                  sinContactar(u.id) === 0
+                    ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                    : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />+{LOTE}
+              </button>
             <select
               value={u.rol}
               onChange={(e) => cambiarRol(u, e.target.value)}
@@ -488,6 +701,7 @@ function Equipo({ users, companies, me, onChanged }) {
               <option value="miembro">Miembro</option>
               <option value="admin">Admin</option>
             </select>
+            </div>
           </div>
         ))}
       </div>
@@ -562,6 +776,7 @@ export default function App() {
   const nombreDe = (id) => users.find((u) => u.id === id)?.nombre || 'Sin asignar'
 
   const hoy = HOY()
+  const misSinContactar = companies.filter((c) => c.responsable === me.id && c.estado === 'sin_contactar').length
   const nAtrasadas = companies.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
   const nHoy = companies.filter((c) => c.proximo_contacto === hoy).length
 
@@ -624,6 +839,22 @@ export default function App() {
           <Equipo users={users} companies={companies} me={me} onChanged={cargar} />
         ) : (
           <>
+            {misSinContactar === 0 ? (
+              <div className="flex items-start gap-2.5 mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <Inbox className="w-4 h-4 mt-0.5 shrink-0" />
+                <p>
+                  <strong>No te queda ninguna empresa sin contactar.</strong>{' '}
+                  {isAdmin
+                    ? `Asígnate ${LOTE} más desde la pestaña Equipo.`
+                    : `Pídele a un admin que te asigne ${LOTE} más.`}
+                </p>
+              </div>
+            ) : misSinContactar <= AVISO_POCAS && (
+              <div className="flex items-start gap-2.5 mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                <Inbox className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
+                <p>Te quedan <strong>{misSinContactar}</strong> empresas sin contactar. Ve pidiendo el siguiente lote.</p>
+              </div>
+            )}
             {(nHoy + nAtrasadas) > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
                 <button
@@ -698,9 +929,9 @@ export default function App() {
                   >
                     <FileSpreadsheet className="w-4 h-4" /><span className="hidden lg:inline">Exportar</span>
                   </button>
-                  <Btn onClick={() => setModal('nueva')}><Plus className="w-4 h-4" /><span className="hidden sm:inline">Empresa</span></Btn>
                 </>
               )}
+              <Btn onClick={() => setModal('nueva')}><Plus className="w-4 h-4" /><span className="hidden sm:inline">Empresa</span></Btn>
             </div>
 
             {visibles.length === 0 ? (
@@ -708,7 +939,7 @@ export default function App() {
                 {companies.length === 0
                   ? isAdmin
                     ? 'Todavía no hay empresas. Añade la primera con el botón «Empresa».'
-                    : 'No tienes empresas asignadas todavía.'
+                    : 'No tienes empresas asignadas todavía. Puedes añadir una con el botón «Empresa».'
                   : 'Ninguna empresa coincide con el filtro.'}
               </div>
             ) : (
