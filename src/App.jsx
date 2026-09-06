@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
-  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet,
+  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
   History, UserPlus, Inbox,
 } from 'lucide-react'
 
@@ -35,6 +35,25 @@ const ACCIONES = {
 }
 const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
 
+// Baremo de puntos del club. Cámbialo aquí y se recalcula todo el histórico:
+// los puntos no se guardan en la base de datos, se derivan del historial.
+const PUNTOS = {
+  alta: 2,          // dar de alta una empresa nueva
+  nota: 1,          // escribir una nota de seguimiento
+  agenda: 0,        // mover el recordatorio
+  datos: 0,         // corregir teléfono, email…
+  responsable: 0,   // reasignaciones (las hace el admin, no puntúan)
+  estado: {
+    _: 1,               // cualquier cambio de estado
+    interesados: 5,     // pasar una empresa a «Muy interesados»
+    beca: 15,           // cerrar una beca
+  },
+}
+const puntosDe = (h) =>
+  h.accion === 'estado'
+    ? (PUNTOS.estado[h.estado_nuevo] ?? PUNTOS.estado._)
+    : (PUNTOS[h.accion] ?? 0)
+
 // El detalle de los cambios de estado viene con los ids crudos ("mail_enviado → beca")
 const detalleLegible = (h) =>
   h.accion === 'estado' && h.estado_anterior && h.estado_nuevo
@@ -45,6 +64,11 @@ const fecha = (iso) =>
 
 const HOY = () => new Date().toISOString().slice(0, 10)
 const sumarDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+// 1 de septiembre del curso en marcha (si estamos en enero-agosto, el del año anterior)
+const INICIO_CURSO = () => {
+  const h = new Date()
+  return `${h.getMonth() >= 8 ? h.getFullYear() : h.getFullYear() - 1}-09-01`
+}
 const fechaCorta = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : ''
 
 // Plantilla de primer contacto por email
@@ -512,102 +536,161 @@ function GraficaEmpresas({ users, companies }) {
   )
 }
 
-// ---------- Actividad del equipo (a partir del historial) ----------
+// ---------- Actividad y puntos del equipo (a partir del historial) ----------
 function Actividad({ users }) {
-  const [dias, setDias] = useState(30)
+  const [desde, setDesde] = useState(INICIO_CURSO())
+  const [hasta, setHasta] = useState(HOY())
   const [filas, setFilas] = useState(null)
+  const [abierto, setAbierto] = useState('')
 
   useEffect(() => {
-    const desde = new Date(Date.now() - dias * 86400000).toISOString()
     setFilas(null)
     supabase
       .from('historial')
-      .select('usuario_id, usuario_nombre, accion')
-      .gte('creado', desde)
-      .limit(10000)
+      .select('id, usuario_id, usuario_nombre, empresa_nombre, accion, detalle, estado_anterior, estado_nuevo, creado')
+      .gte('creado', desde + 'T00:00:00')
+      .lte('creado', hasta + 'T23:59:59')
+      .order('creado', { ascending: false })
+      .limit(20000)
       .then(({ data }) => setFilas(data || []))
-  }, [dias])
+  }, [desde, hasta])
 
   const resumen = (filas || []).reduce((acc, h) => {
     const k = h.usuario_id || h.usuario_nombre
-    acc[k] = acc[k] || { nombre: h.usuario_nombre, total: 0, estado: 0, alta: 0, nota: 0 }
-    acc[k].total++
-    if (acc[k][h.accion] !== undefined) acc[k][h.accion]++
+    acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, puntos: 0, filas: [] }
+    const r = acc[k]
+    if (r[h.accion] !== undefined) r[h.accion]++
+    if (h.accion === 'estado' && h.estado_nuevo === 'beca') r.becas++
+    r.puntos += puntosDe(h)
+    r.filas.push(h)
     return acc
   }, {})
-  const lista = Object.values(resumen).sort((a, b) => b.total - a.total)
+
+  // Gente sin ni una acción en el periodo: también interesa verla, con un 0
+  users.forEach((u) => {
+    if (!resumen[u.id]) resumen[u.id] = { id: u.id, nombre: u.nombre, alta: 0, estado: 0, nota: 0, becas: 0, puntos: 0, filas: [] }
+  })
+  const lista = Object.values(resumen).sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
 
   const exportar = () => {
-    const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Total acciones']
-    const csv = [cab, ...lista.map((d) => [d.nombre, d.alta, d.estado, d.nota, d.total])]
+    const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Becas', 'Puntos']
+    const csv = [cab, ...lista.map((d) => [d.nombre, d.alta, d.estado, d.nota, d.becas, d.puntos])]
       .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = `actividad-${dias}dias-${HOY()}.csv`
+    a.download = `puntos-${desde}_${hasta}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
+  const atajo = (label, d) => (
+    <button
+      key={label}
+      onClick={() => { setDesde(d); setHasta(HOY()) }}
+      className={`px-2.5 py-1 rounded-lg border text-xs ${desde === d && hasta === HOY() ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+    >
+      {label}
+    </button>
+  )
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6">
-      <div className="flex items-baseline justify-between mb-5 gap-3 flex-wrap">
+      <div className="flex items-baseline justify-between mb-4 gap-3 flex-wrap">
         <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
-          <History className="w-4 h-4 text-slate-400" />Actividad
+          <Trophy className="w-4 h-4 text-slate-400" />Puntos del equipo
         </h3>
-        <div className="flex items-center gap-2">
-          <select
-            value={dias}
-            onChange={(e) => setDias(Number(e.target.value))}
-            className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-white"
-          >
-            <option value={7}>Últimos 7 días</option>
-            <option value={30}>Últimos 30 días</option>
-            <option value={90}>Últimos 90 días</option>
-            <option value={365}>Último año</option>
-          </select>
-          <button onClick={exportar} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
-            <Download className="w-3.5 h-3.5" />CSV
-          </button>
-        </div>
+        <button onClick={exportar} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+          <Download className="w-3.5 h-3.5" />CSV
+        </button>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-sm bg-white" />
+        <span className="text-slate-400 text-sm">a</span>
+        <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-sm bg-white" />
+        <span className="w-px h-5 bg-slate-200 mx-1" />
+        {atajo('Curso', INICIO_CURSO())}
+        {atajo('30 días', sumarDias(-30))}
+        {atajo('7 días', sumarDias(-7))}
+      </div>
+
       {filas === null ? (
         <p className="text-sm text-slate-400">Cargando…</p>
-      ) : lista.length === 0 ? (
-        <p className="text-sm text-slate-400">Ningún movimiento en este periodo.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
-              <th className="text-left font-medium pb-2">Persona</th>
-              <th className="font-medium pb-2">Altas</th>
-              <th className="font-medium pb-2">Estados</th>
-              <th className="font-medium pb-2">Notas</th>
-              <th className="font-medium pb-2">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lista.map((d, i) => (
-              <tr key={i} className="border-t border-slate-100 text-right tabular-nums">
-                <td className="text-left py-2 text-slate-700">{d.nombre}</td>
-                <td className="text-slate-500">{d.alta}</td>
-                <td className="text-slate-500">{d.estado}</td>
-                <td className="text-slate-500">{d.nota}</td>
-                <td className="font-semibold text-slate-900">{d.total}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
+                <th className="text-left font-medium pb-2">Persona</th>
+                <th className="font-medium pb-2">Altas</th>
+                <th className="font-medium pb-2">Estados</th>
+                <th className="font-medium pb-2">Notas</th>
+                <th className="font-medium pb-2">Becas</th>
+                <th className="font-medium pb-2 pl-3">Puntos</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lista.map((d) => (
+                <Fragment key={d.id}>
+                  <tr
+                    onClick={() => setAbierto(abierto === d.id ? '' : d.id)}
+                    className="border-t border-slate-100 text-right tabular-nums cursor-pointer hover:bg-slate-50"
+                  >
+                    <td className="text-left py-2 text-slate-700 flex items-center gap-1">
+                      <ChevronRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${abierto === d.id ? 'rotate-90' : ''}`} />
+                      {d.nombre}
+                    </td>
+                    <td className="text-slate-500">{d.alta}</td>
+                    <td className="text-slate-500">{d.estado}</td>
+                    <td className="text-slate-500">{d.nota}</td>
+                    <td className={d.becas ? 'text-emerald-700 font-semibold' : 'text-slate-300'}>{d.becas}</td>
+                    <td className="font-bold text-slate-900 pl-3">{d.puntos}</td>
+                  </tr>
+                  {abierto === d.id && (
+                    <tr>
+                      <td colSpan={6} className="bg-slate-50 px-3 py-3">
+                        {d.filas.length === 0 ? (
+                          <p className="text-xs text-slate-400">Sin movimientos en este periodo.</p>
+                        ) : (
+                          <ol className="space-y-1.5 max-h-72 overflow-y-auto">
+                            {d.filas.map((h) => (
+                              <li key={h.id} className="flex items-baseline gap-2 text-xs">
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe(h.accion).color}`}>
+                                  {accionDe(h.accion).label}
+                                </span>
+                                <span className="flex-1 min-w-0 text-slate-600 truncate">
+                                  <strong className="text-slate-800">{h.empresa_nombre}</strong> · {detalleLegible(h)}
+                                </span>
+                                <span className="shrink-0 text-slate-400">{fecha(h.creado)}</span>
+                                <span className={`shrink-0 w-8 text-right tabular-nums ${puntosDe(h) ? 'text-slate-700 font-semibold' : 'text-slate-300'}`}>
+                                  +{puntosDe(h)}
+                                </span>
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-      <p className="text-xs text-slate-400 mt-4">
-        Cada fila del historial cuenta como una acción: dar de alta una empresa, cambiar su estado,
-        escribir una nota o mover el recordatorio. Sirve como base objetiva para repartir puntos.
+
+      <p className="text-xs text-slate-400 mt-4 leading-relaxed">
+        Baremo actual: alta de empresa {PUNTOS.alta} · nota de seguimiento {PUNTOS.nota} ·
+        cambio de estado {PUNTOS.estado._} (muy interesados {PUNTOS.estado.interesados}, beca conseguida {PUNTOS.estado.beca}).
+        Se cambia en la constante <code>PUNTOS</code> al principio de App.jsx. Haz clic en una persona para ver el desglose.
       </p>
     </div>
   )
 }
-
 // ---------- Equipo (solo admin) ----------
 function Equipo({ users, companies, me, onChanged }) {
   const [err, setErr] = useState('')
