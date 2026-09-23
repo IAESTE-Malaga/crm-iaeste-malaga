@@ -32,6 +32,7 @@ const ACCIONES = {
   agenda: { label: 'Agenda', color: 'bg-amber-50 text-amber-700 border-amber-200' },
   responsable: { label: 'Responsable', color: 'bg-violet-50 text-violet-700 border-violet-200' },
   datos: { label: 'Datos', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  quincena: { label: 'Quincena', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 }
 const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
 
@@ -48,11 +49,96 @@ const PUNTOS = {
     interesados: 5,     // pasar una empresa a «Muy interesados»
     beca: 15,           // cerrar una beca
   },
+  quincena: 10,       // seguimiento quincenal cumplido (ver QUINCENA)
 }
 const puntosDe = (h) =>
   h.accion === 'estado'
     ? (PUNTOS.estado[h.estado_nuevo] ?? PUNTOS.estado._)
-    : (PUNTOS[h.accion] ?? 0)
+    : h.accion === 'quincena'
+      ? (h.cumple ? PUNTOS.quincena : 0)
+      : (PUNTOS[h.accion] ?? 0)
+
+// ---------- Seguimiento quincenal ----------
+// Cada 14 días, contados desde QUINCENA.inicio (iguales para todo el equipo), se revisa a cada
+// persona: si ha vuelto a tocar TODAS las empresas que tenía en seguimiento al empezar la
+// quincena, se lleva PUNTOS.quincena. No se guarda nada en la base de datos: se deduce del historial.
+//  - «En seguimiento» = empresa asignada a esa persona cuyo estado, al empezar la quincena,
+//    era uno de QUINCENA.activos. Las que siguen sin contactar, aparcadas o cerradas no cuentan.
+//  - «La ha vuelto a tocar» = dentro de la quincena, esa persona ha escrito una nota o ha
+//    cambiado el estado (incluido cerrarla como beca o «No quieren»).
+//  - Quien no tenía ninguna empresa en seguimiento no cumple ni falla esa quincena.
+const QUINCENA = {
+  inicio: '2026-09-28',                                      // lunes en que arranca la primera
+  dias: 14,
+  activos: ['no_contesta', 'mail_enviado', 'interesados'],
+  cuentan: ['nota', 'estado'],
+}
+const isoDia = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const diaMas = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDia(d) }
+
+// Quincenas que han empezado hasta `hastaIso` (incluido). fin es exclusivo.
+function quincenasHasta(hastaIso) {
+  const out = []
+  for (let ini = QUINCENA.inicio; ini <= hastaIso; ini = diaMas(ini, QUINCENA.dias)) {
+    out.push({ ini, fin: diaMas(ini, QUINCENA.dias) })
+  }
+  return out
+}
+
+// hist: filas del historial (empresa_id, usuario_id, accion, estado_nuevo, creado), en cualquier orden.
+// companies: empresas actuales (id, nombre, responsable).
+// Devuelve { [usuario_id]: [{ ini, fin, total, hechas, cumple, faltan: [empresa], enCurso }] }
+function evaluarQuincenas(hist, companies, hastaIso) {
+  const porEmpresa = {}
+  for (const h of hist) (porEmpresa[h.empresa_id] ||= []).push(h)
+  for (const k in porEmpresa) porEmpresa[k].sort((a, b) => new Date(a.creado) - new Date(b.creado))
+
+  const ahora = new Date()
+  const res = {}
+  for (const q of quincenasHasta(hastaIso)) {
+    const ini = new Date(q.ini + 'T00:00:00')
+    const fin = new Date(q.fin + 'T00:00:00')
+    const porPersona = {}
+    for (const c of companies) {
+      if (!c.responsable) continue
+      const filas = porEmpresa[c.id] || []
+      let estado = 'sin_contactar'
+      for (const h of filas) {
+        if (new Date(h.creado) >= ini) break
+        if (h.accion === 'estado' && h.estado_nuevo) estado = h.estado_nuevo
+      }
+      if (!QUINCENA.activos.includes(estado)) continue
+      const tocada = filas.some((h) => {
+        const t = new Date(h.creado)
+        return t >= ini && t < fin && h.usuario_id === c.responsable && QUINCENA.cuentan.includes(h.accion)
+      })
+      const p = (porPersona[c.responsable] ||= { total: 0, hechas: 0, faltan: [] })
+      p.total++
+      if (tocada) p.hechas++
+      else p.faltan.push(c)
+    }
+    for (const [uid, p] of Object.entries(porPersona)) {
+      ;(res[uid] ||= []).push({
+        ...q, ...p,
+        cumple: p.hechas === p.total,
+        enCurso: fin > ahora,
+      })
+    }
+  }
+  return res
+}
+
+// Supabase corta cada consulta en 1000 filas aunque pidas más: esto pagina hasta traerlo todo.
+async function traerTodo(consulta) {
+  const PAG = 1000
+  const out = []
+  for (let i = 0; ; i += PAG) {
+    const { data, error } = await consulta().range(i, i + PAG - 1)
+    if (error) throw error
+    out.push(...(data || []))
+    if (!data || data.length < PAG) return out
+  }
+}
 
 // El detalle de los cambios de estado viene con los ids crudos ("mail_enviado → beca")
 const detalleLegible = (h) =>
@@ -537,30 +623,54 @@ function GraficaEmpresas({ users, companies }) {
 }
 
 // ---------- Actividad y puntos del equipo (a partir del historial) ----------
-function Actividad({ users }) {
+function Actividad({ users, companies }) {
   const [desde, setDesde] = useState(INICIO_CURSO())
   const [hasta, setHasta] = useState(HOY())
-  const [filas, setFilas] = useState(null)
+  const [todo, setTodo] = useState(null) // historial completo hasta «hasta» (hace falta el anterior para las quincenas)
+  const [err, setErr] = useState('')
   const [abierto, setAbierto] = useState('')
 
   useEffect(() => {
-    setFilas(null)
-    supabase
+    setTodo(null); setErr('')
+    traerTodo(() => supabase
       .from('historial')
-      .select('id, usuario_id, usuario_nombre, empresa_nombre, accion, detalle, estado_anterior, estado_nuevo, creado')
-      .gte('creado', desde + 'T00:00:00')
+      .select('id, empresa_id, usuario_id, usuario_nombre, empresa_nombre, accion, detalle, estado_anterior, estado_nuevo, creado')
       .lte('creado', hasta + 'T23:59:59')
       .order('creado', { ascending: false })
-      .limit(20000)
-      .then(({ data }) => setFilas(data || []))
-  }, [desde, hasta])
+      .order('id', { ascending: false }))
+      .then(setTodo)
+      .catch((e) => { setErr(e.message); setTodo([]) })
+  }, [hasta])
 
-  const resumen = (filas || []).reduce((acc, h) => {
+  const iniRango = new Date(desde + 'T00:00:00')
+  const filas = (todo || []).filter((h) => new Date(h.creado) >= iniRango)
+
+  // Quincenas cerradas cuyo último día cae dentro del rango, como filas más del desglose
+  const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
+  const quincenas = []
+  for (const [uid, qs] of Object.entries(evaluarQuincenas(todo || [], companies, hasta))) {
+    for (const q of qs) {
+      const ultimo = diaMas(q.fin, -1)
+      if (q.enCurso || ultimo < desde || ultimo > hasta) continue
+      quincenas.push({
+        id: `q-${uid}-${q.ini}`, usuario_id: uid, usuario_nombre: nombreDeUsuario(uid), accion: 'quincena',
+        empresa_nombre: `Quincena ${fechaCorta(q.ini)} – ${fechaCorta(ultimo)}`,
+        detalle: q.cumple
+          ? `${q.hechas}/${q.total} empresas seguidas`
+          : `${q.hechas}/${q.total} · faltó: ${q.faltan.map((c) => c.nombre).join(', ')}`,
+        cumple: q.cumple, creado: q.fin + 'T00:00:00',
+      })
+    }
+  }
+  const movimientos = [...filas, ...quincenas].sort((a, b) => new Date(b.creado) - new Date(a.creado))
+
+  const resumen = movimientos.reduce((acc, h) => {
     const k = h.usuario_id || h.usuario_nombre
-    acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, puntos: 0, filas: [] }
+    acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
     const r = acc[k]
     if (r[h.accion] !== undefined) r[h.accion]++
     if (h.accion === 'estado' && h.estado_nuevo === 'beca') r.becas++
+    if (h.accion === 'quincena' && h.cumple) r.quincenas++
     r.puntos += puntosDe(h)
     r.filas.push(h)
     return acc
@@ -568,13 +678,13 @@ function Actividad({ users }) {
 
   // Gente sin ni una acción en el periodo: también interesa verla, con un 0
   users.forEach((u) => {
-    if (!resumen[u.id]) resumen[u.id] = { id: u.id, nombre: u.nombre, alta: 0, estado: 0, nota: 0, becas: 0, puntos: 0, filas: [] }
+    if (!resumen[u.id]) resumen[u.id] = { id: u.id, nombre: u.nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
   })
   const lista = Object.values(resumen).sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
 
   const exportar = () => {
-    const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Becas', 'Puntos']
-    const csv = [cab, ...lista.map((d) => [d.nombre, d.alta, d.estado, d.nota, d.becas, d.puntos])]
+    const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Becas', 'Quincenas cumplidas', 'Puntos']
+    const csv = [cab, ...lista.map((d) => [d.nombre, d.alta, d.estado, d.nota, d.becas, d.quincenas, d.puntos])]
       .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
@@ -618,7 +728,8 @@ function Actividad({ users }) {
         {atajo('7 días', sumarDias(-7))}
       </div>
 
-      {filas === null ? (
+      {err && <p className="text-sm text-rose-600 mb-3">{err}</p>}
+      {todo === null ? (
         <p className="text-sm text-slate-400">Cargando…</p>
       ) : (
         <div className="overflow-x-auto">
@@ -630,6 +741,7 @@ function Actividad({ users }) {
                 <th className="font-medium pb-2">Estados</th>
                 <th className="font-medium pb-2">Notas</th>
                 <th className="font-medium pb-2">Becas</th>
+                <th className="font-medium pb-2" title="Quincenas de seguimiento cumplidas">Quinc.</th>
                 <th className="font-medium pb-2 pl-3">Puntos</th>
               </tr>
             </thead>
@@ -648,11 +760,12 @@ function Actividad({ users }) {
                     <td className="text-slate-500">{d.estado}</td>
                     <td className="text-slate-500">{d.nota}</td>
                     <td className={d.becas ? 'text-emerald-700 font-semibold' : 'text-slate-300'}>{d.becas}</td>
+                    <td className={d.quincenas ? 'text-indigo-700 font-semibold' : 'text-slate-300'}>{d.quincenas}</td>
                     <td className="font-bold text-slate-900 pl-3">{d.puntos}</td>
                   </tr>
                   {abierto === d.id && (
                     <tr>
-                      <td colSpan={6} className="bg-slate-50 px-3 py-3">
+                      <td colSpan={7} className="bg-slate-50 px-3 py-3">
                         {d.filas.length === 0 ? (
                           <p className="text-xs text-slate-400">Sin movimientos en este periodo.</p>
                         ) : (
@@ -685,7 +798,9 @@ function Actividad({ users }) {
 
       <p className="text-xs text-slate-400 mt-4 leading-relaxed">
         Baremo actual: alta de empresa {PUNTOS.alta} · nota de seguimiento {PUNTOS.nota} ·
-        cambio de estado {PUNTOS.estado._} (muy interesados {PUNTOS.estado.interesados}, beca conseguida {PUNTOS.estado.beca}).
+        cambio de estado {PUNTOS.estado._} (muy interesados {PUNTOS.estado.interesados}, beca conseguida {PUNTOS.estado.beca}) ·
+        quincena de seguimiento cumplida {PUNTOS.quincena} (cada {QUINCENA.dias} días desde el {fechaCorta(QUINCENA.inicio)}:
+        haber escrito una nota o cambiado el estado de todas tus empresas en seguimiento; se suma al cerrar la quincena).
         Se cambia en la constante <code>PUNTOS</code> al principio de App.jsx. Haz clic en una persona para ver el desglose.
       </p>
     </div>
@@ -734,7 +849,7 @@ function Equipo({ users, companies, me, onChanged }) {
 
       <GraficaEmpresas users={users} companies={companies} />
 
-      <Actividad users={users} />
+      <Actividad users={users} companies={companies} />
 
       <p className="text-xs text-slate-500 px-1">
         Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar».
@@ -787,6 +902,67 @@ function Equipo({ users, companies, me, onChanged }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------- Aviso de la quincena en curso (para cada persona) ----------
+function MiQuincena({ me, companies, onAbrir }) {
+  const mias = companies.filter((c) => c.responsable === me.id)
+  const clave = mias.map((c) => `${c.id}:${c.estado}:${c.actualizado || ''}`).join('|')
+  const [q, setQ] = useState(null)
+
+  useEffect(() => {
+    let vivo = true
+    const hoy = HOY()
+    const ids = mias.map((c) => c.id)
+    if (ids.length === 0) { setQ(null); return }
+    const trozos = []
+    for (let i = 0; i < ids.length; i += 100) trozos.push(ids.slice(i, i + 100))
+    Promise.all(trozos.map((t) => traerTodo(() => supabase
+      .from('historial')
+      .select('id, empresa_id, usuario_id, accion, estado_nuevo, creado')
+      .in('empresa_id', t)
+      .order('creado', { ascending: true })
+      .order('id', { ascending: true }))))
+      .then((partes) => {
+        if (!vivo) return
+        const qs = evaluarQuincenas(partes.flat(), mias, hoy)[me.id] || []
+        setQ(qs.find((x) => x.enCurso) || null)
+      })
+      .catch(() => vivo && setQ(null))
+    return () => { vivo = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.id, clave])
+
+  if (!q || q.total === 0) return null
+  const ultimo = diaMas(q.fin, -1)
+  const dia = new Date(ultimo + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })
+  return q.cumple ? (
+    <div className="flex items-start gap-2.5 mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+      <Trophy className="w-4 h-4 mt-0.5 shrink-0" />
+      <p>
+        <strong>Seguimiento de la quincena hecho</strong> ({q.hechas}/{q.total} empresas).
+        Los +{PUNTOS.quincena} puntos se suman al cerrar la quincena, el {dia}.
+      </p>
+    </div>
+  ) : (
+    <div className="flex items-start gap-2.5 mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+      <CalendarClock className="w-4 h-4 mt-0.5 shrink-0" />
+      <div>
+        <p>
+          <strong>Seguimiento quincenal: {q.hechas}/{q.total}.</strong>{' '}
+          Vuelve a llamar (y apúntalo con una nota o un cambio de estado) a estas empresas antes del final del {dia} y te llevas +{PUNTOS.quincena}:
+        </p>
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {q.faltan.map((c) => (
+            <button key={c.id} onClick={() => onAbrir(companies.find((x) => x.id === c.id) || c)}
+              className="px-2.5 py-1 rounded-full border border-indigo-200 bg-white text-xs font-medium text-indigo-700 hover:bg-indigo-100">
+              {c.nombre}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -938,6 +1114,7 @@ export default function App() {
                 <p>Te quedan <strong>{misSinContactar}</strong> empresas sin contactar. Ve pidiendo el siguiente lote.</p>
               </div>
             )}
+            <MiQuincena me={me} companies={companies} onAbrir={setModal} />
             {(nHoy + nAtrasadas) > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
                 <button
