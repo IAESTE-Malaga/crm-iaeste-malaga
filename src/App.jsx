@@ -212,7 +212,10 @@ const Btn = ({ children, variant = 'primary', ...props }) => {
 
 // ---------- Login / Registro ----------
 function Auth() {
-  const [modo, setModo] = useState('login') // login | registro
+  // Con ?registro en el enlace (https://…/?registro) se abre directamente en «Crear cuenta»
+  const [modo, setModo] = useState(() =>
+    new URLSearchParams(window.location.search).has('registro') ? 'registro' : 'login'
+  ) // login | registro
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
@@ -225,13 +228,15 @@ function Auth() {
     try {
       if (modo === 'registro') {
         if (!nombre.trim()) throw new Error('Indica tu nombre.')
-        const { error } = await supabase.auth.signUp({
+        if (pass.length < 6) throw new Error('La contraseña necesita al menos 6 caracteres.')
+        const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password: pass,
           options: { data: { nombre: nombre.trim() } },
         })
         if (error) throw error
-        setInfo('Cuenta creada. Si tu proyecto exige confirmación por email, revisa tu bandeja de entrada.')
+        // Si Supabase no pide confirmar el email, signUp ya devuelve sesión y se entra solo.
+        if (!data.session) setInfo('Cuenta creada. Te hemos enviado un email: ábrelo para confirmarla y después entra aquí.')
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass })
         if (error) throw error
@@ -255,6 +260,22 @@ function Auth() {
             <p className="text-xs text-slate-500">Gestión de empresas</p>
           </div>
         </div>
+        <div className="grid grid-cols-2 bg-slate-100 rounded-lg p-0.5 mb-5">
+          {[['login', 'Entrar'], ['registro', 'Crear cuenta']].map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => { setModo(id); setErr(''); setInfo('') }}
+              className={`py-1.5 rounded-md text-sm font-medium ${modo === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {modo === 'registro' && (
+          <p className="text-xs text-slate-500 mb-3">
+            ¿Es tu primera vez? Crea tu cuenta con tu nombre y email y entrarás directamente como miembro.
+          </p>
+        )}
         <div className="space-y-3">
           {modo === 'registro' && (
             <div><Label>Nombre</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Mario" /></div>
@@ -267,12 +288,6 @@ function Auth() {
             <KeyRound className="w-4 h-4" />
             {busy ? 'Un momento…' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
           </Btn>
-          <button
-            onClick={() => { setModo(modo === 'login' ? 'registro' : 'login'); setErr(''); setInfo('') }}
-            className="w-full text-center text-sm text-blue-700 hover:underline pt-1"
-          >
-            {modo === 'login' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Entra'}
-          </button>
         </div>
       </div>
     </div>
