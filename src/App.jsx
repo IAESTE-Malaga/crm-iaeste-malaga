@@ -643,7 +643,10 @@ function Actividad({ users, companies }) {
   const [hasta, setHasta] = useState(HOY())
   const [todo, setTodo] = useState(null) // historial completo hasta «hasta» (hace falta el anterior para las quincenas)
   const [err, setErr] = useState('')
+  const [info, setInfo] = useState('')
   const [abierto, setAbierto] = useState('')
+  const [recarga, setRecarga] = useState(0)
+  const [limpiando, setLimpiando] = useState(false)
 
   useEffect(() => {
     setTodo(null); setErr('')
@@ -655,10 +658,56 @@ function Actividad({ users, companies }) {
       .order('id', { ascending: false }))
       .then(setTodo)
       .catch((e) => { setErr(e.message); setTodo([]) })
-  }, [hasta])
+  }, [hasta, recarga])
+
+  // Movimientos del historial cuya empresa ya no existe (se borró desde el CRM).
+  // Ya no suman puntos (se filtran en «filas»), pero siguen guardados hasta que se limpian con el botón.
+  const idsVivos = new Set(companies.map((c) => c.id))
+  const huerfanasVistas = companies.length ? (todo || []).filter((h) => !idsVivos.has(h.empresa_id)) : []
+  const nEmpresasBorradas = new Set(huerfanasVistas.map((h) => h.empresa_id ?? h.empresa_nombre)).size
+
+  const limpiarBorradas = async () => {
+    setErr(''); setInfo(''); setLimpiando(true)
+    try {
+      // Se vuelve a pedir todo a la base de datos (no lo que hay en pantalla) para no borrar
+      // por error el historial de una empresa que alguien acaba de crear en otra pestaña.
+      const emps = await traerTodo(() => supabase.from('empresas').select('id').order('id'))
+      if (emps.length === 0) throw new Error('No se han podido cargar las empresas. No se ha borrado nada.')
+      const vivas = new Set(emps.map((e) => e.id))
+      const hist = await traerTodo(() => supabase.from('historial').select('id, empresa_id, empresa_nombre').order('id'))
+      const huerfanas = hist.filter((h) => !vivas.has(h.empresa_id))
+      if (huerfanas.length === 0) { setInfo('No hay movimientos de empresas borradas. Las cuentas ya están limpias.'); return }
+
+      const nombres = [...new Set(huerfanas.map((h) => h.empresa_nombre || '(sin nombre)'))]
+      const ok = confirm(
+        `Se van a quitar ${huerfanas.length} movimientos del historial de ${nombres.length} empresa${nombres.length !== 1 ? 's' : ''} que ya no existe${nombres.length !== 1 ? 'n' : ''}:\n\n` +
+        nombres.slice(0, 15).join('\n') + (nombres.length > 15 ? `\n… y ${nombres.length - 15} más` : '') +
+        '\n\nLos puntos y las cuentas se recalcularán sin ellos. No se puede deshacer. ¿Seguir?'
+      )
+      if (!ok) return
+
+      const ids = huerfanas.map((h) => h.id)
+      let borradas = 0
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data, error } = await supabase.from('historial').delete().in('id', ids.slice(i, i + 100)).select('id')
+        if (error) throw error
+        borradas += (data || []).length
+      }
+      if (borradas < ids.length) {
+        throw new Error(`Solo se han podido quitar ${borradas} de ${ids.length} movimientos: falta el permiso de borrado del historial en Supabase (ejecuta el SQL de la política para admins).`)
+      }
+      setInfo(`Hecho: quitados ${borradas} movimientos de ${nombres.length} empresa${nombres.length !== 1 ? 's' : ''} borrada${nombres.length !== 1 ? 's' : ''}.`)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setLimpiando(false)
+      setRecarga((r) => r + 1)
+    }
+  }
 
   const iniRango = new Date(desde + 'T00:00:00')
-  const filas = (todo || []).filter((h) => new Date(h.creado) >= iniRango)
+  // Lo de empresas ya eliminadas no cuenta: al borrar una empresa chorra, sus puntos desaparecen del periodo.
+  const filas = (todo || []).filter((h) => new Date(h.creado) >= iniRango && (!companies.length || idsVivos.has(h.empresa_id)))
 
   // Quincenas cerradas cuyo último día cae dentro del rango, como filas más del desglose
   const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
@@ -726,9 +775,24 @@ function Actividad({ users, companies }) {
         <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
           <Trophy className="w-4 h-4 text-slate-400" />Puntos del equipo
         </h3>
-        <button onClick={exportar} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
-          <Download className="w-3.5 h-3.5" />CSV
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={limpiarBorradas}
+            disabled={limpiando}
+            title="Quita del historial (y de los puntos) todo lo relacionado con empresas que se han eliminado del CRM"
+            className={`px-2.5 py-1 rounded-lg border text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50 ${
+              nEmpresasBorradas
+                ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            {limpiando ? 'Limpiando…' : `Quitar empresas borradas${nEmpresasBorradas ? ` · ${nEmpresasBorradas}` : ''}`}
+          </button>
+          <button onClick={exportar} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+            <Download className="w-3.5 h-3.5" />CSV
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-5">
@@ -744,6 +808,14 @@ function Actividad({ users, companies }) {
       </div>
 
       {err && <p className="text-sm text-rose-600 mb-3">{err}</p>}
+      {info && <p className="text-sm text-emerald-700 mb-3">{info}</p>}
+      {nEmpresasBorradas > 0 && !limpiando && (
+        <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 flex items-start gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" />
+          No se cuentan {huerfanasVistas.length} movimientos de {nEmpresasBorradas} empresa{nEmpresasBorradas !== 1 ? 's' : ''} eliminada{nEmpresasBorradas !== 1 ? 's' : ''}.
+          Siguen guardados en el historial; pulsa «Quitar empresas borradas» para borrarlos del todo.
+        </p>
+      )}
       {todo === null ? (
         <p className="text-sm text-slate-400">Cargando…</p>
       ) : (
