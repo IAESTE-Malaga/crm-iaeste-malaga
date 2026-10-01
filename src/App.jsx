@@ -157,23 +157,73 @@ const INICIO_CURSO = () => {
 }
 const fechaCorta = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : ''
 
-// Enlace a la ventana de redactar de Gmail (no depende de tener un cliente de correo configurado)
+// Enlace a la ventana de redactar de Gmail (no depende de tener un cliente de correo configurado).
+// Usa la cuenta /u/0/ (la primera sesión de Gmail abierta en el navegador). Gmail añade la firma automáticamente.
 const gmailUrl = (to, asunto = '', cuerpo = '') =>
-  `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to || '')}` +
+  `https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=1&to=${encodeURIComponent(to || '')}` +
   (asunto ? `&su=${encodeURIComponent(asunto)}` : '') +
   (cuerpo ? `&body=${encodeURIComponent(cuerpo)}` : '')
 
-// Plantilla de primer contacto por email
+// Plantilla de contacto (la que usa el equipo de empresas). Los adjuntos se añaden a mano en Gmail.
+const SEP = '------------------------------------------------------------------------------------------------------------'
 const plantillaEmail = (emp, yo) => {
-  const asunto = `IAESTE Madrid - Estudiantes internacionales en prácticas para ${emp.nombre || 'su empresa'}`
+  const asunto = `IAESTE Madrid - Programa de prácticas internacionales para ${emp.nombre || 'su empresa'}`
   const cuerpo = [
-    `Buenos días${emp.contacto ? ' ' + emp.contacto : ''},`, '',
-    'Le escribo desde IAESTE Madrid, el comité de la Universidad Politécnica de Madrid de una asociación internacional sin ánimo de lucro que gestiona prácticas para estudiantes de ingeniería y ciencias.',
+    `Buenos días${emp.contacto ? ' ' + emp.contacto : ''},`,
     '',
-    'Nos encargamos de todo el proceso: seleccionamos al estudiante según el perfil que necesiten, tramitamos la documentación y le damos alojamiento y acompañamiento durante su estancia. Para la empresa no supone coste de intermediación.',
+    `Mi nombre es ${yo || '(NOMBRE Y APELLIDO)'} y trabajo como parte de la Asociación internacional IAESTE. Como comenté por teléfono, este correo contiene información básica acerca de nuestro programa de prácticas internacionales, así como una presentación visual adjunta. Si hiciese falta más información al respecto, estamos abiertos a tener una reunión para profundizar más:`,
     '',
-    'Si les encaja, ¿tendría unos minutos esta semana o la siguiente para contárselo por teléfono?',
-    '', 'Un saludo,', yo || '', 'IAESTE Madrid - ETSIT UPM',
+    'IAESTE (International Association for the Exchange of Students for Technical Experience) es una organización internacional cuyo objetivo es promover la realización de prácticas remuneradas en empresas y entidades de diversos países para estudiantes de especialidades científico-técnicas, fomentando así la excelencia profesional y el desarrollo de las aptitudes personales en entornos multiculturales y pluridisciplinares.',
+    '',
+    'Adjunto para su información:',
+    '- Presentación programa IAESTE',
+    '- Modelo convenio',
+    '',
+    'Si están interesados en formalizar una oferta de prácticas a través del programa de movilidad IAESTE, el proceso sería el siguiente:',
+    '',
+    'Cumplimentar y enviar a iaestetlmd@gmail.com la siguiente documentación:',
+    '- Formulario oferta prácticas (1 por plaza ofertada). En este documento se detalla el perfil buscado.',
+    '- Compromiso empresa',
+    '- Acuerdo corresponsabilidad tratamiento datos',
+    '',
+    'Características generales de la oferta de prácticas:',
+    '',
+    '   - La empresa determina la duración y el periodo de la práctica, con duración mínima de 6 semanas y máximo 1 año.',
+    '   - El becario trabajará un máximo de 40 horas semanales de lunes a viernes.',
+    '   - El becario recibirá una remuneración mínima de 800 euros netos mensuales por parte de la empresa, de forma que pueda mantenerse durante la práctica en nuestro país (con la posibilidad de ofrecer alojamiento, manutención y transporte, en lugar de la remuneración).',
+    '   - La empresa recibirá el perfil de un estudiante que cumpla los requisitos solicitados (un perfil por oferta). Se dispondrá del plazo de dos semanas para evaluar y/o entrevistar al estudiante de forma online si se considera necesario.',
+    '   - Tras la evaluación del perfil proporcionado, la empresa aceptará o rechazará al estudiante. Si este es aceptado, se procederá a la firma de un convenio entre IAESTE España, becario y la empresa que permita la incorporación del estudiante. En ningún caso será necesario un contrato laboral.',
+    '',
+    SEP,
+    '',
+    'Indicarles que en el caso de becarios o recién graduados extracomunitarios que vengan a España a realizar una práctica mediante convenio por un periodo superior a 90 días y en aplicación del Real Decreto Ley 11/2018 de 31 de agosto- Disposición adicional decimoctava deberán estar provistos de la Autorización de residencia para prácticas no laborales mediante convenio.',
+    '',
+    'Para ello, la entidad que acoge al becario en prácticas (la empresa) debe solicitar de manera telemática a través de la plataforma MERCURIO https://sede.administracionespublicas.gob.es/mercurio/inicioMercurio.html esta Autorización de residencia para prácticas no laborales mediante convenio, en los términos que se indica en esta disposición.',
+    '',
+    'A la recepción del convenio les remitiremos copia firmada por IAESTE y Estudiante junto con resto de documentación requerida por la Administración, para que procedan a la solicitud de autorización para estancia por prácticas no laborales.',
+    '',
+    'La resolución de esta autorización se resolverá en el plazo máximo de 30 días. Si no se resuelve en dicho plazo, la autorización se entenderá estimada por silencio administrativo. Al día siguiente de que expire ese plazo la empresa deberá solicitar a la Administración el correspondiente Certificado de silencio.',
+    '',
+    SEP,
+    '',
+    'Por último, informarles que deberán en su momento solicitar el nº de seguridad social y posterior alta en la TGSS como becario en prácticas externas.',
+    '',
+    'A estos efectos, la Administración ha abierto la posibilidad de que los autorizados al sistema RED (las empresas) realicen dicha solicitud a través de CASIA en relación con los trabajadores respecto de los cuales van a comunicar con posterioridad su alta. Para ello, se ha creado un nuevo trámite, “Solicitud de número de Seguridad Social”, que se encuentra ya disponible dentro de las subcategorías correspondientes a los trámites de Afiliación, altas y bajas < Altas de trabajadores cuenta ajena.',
+    '',
+    'La documentación que deberá acompañar a dicha solicitud será la siguiente:',
+    'TA.1 firmado por el becario, pasaporte o ID, NIE y convenio',
+    '',
+    '• ALTA',
+    '',
+    'Una vez la empresa disponga del CCC específico y del número de Seguridad Social del estudiante extranjero, el alta en el Régimen General de la Seguridad Social de los estudiantes se deberá realizar mediante el mismo procedimiento que el de un trabajador por cuenta ajena, realizando el trámite ante la Seguridad Social presencialmente o a través del Sistema Red.',
+    '',
+    'Código de alta: 1',
+    'Exclusión cotización: 986 (programas de formación)',
+    'Y la Relación Laboral de Carácter Especial (RLCE) dependiendo de si las prácticas son curriculares o extracurriculares:',
+    '·  Curriculares: 9928',
+    '·  Extracurriculares: 9927',
+    '',
+    'Quedamos a su disposición para cualquier consulta que tengan o para fijar una reunión. Gracias de antemano y un saludo,',
   ].join('\n')
   return gmailUrl(emp.email, asunto, cuerpo)
 }
