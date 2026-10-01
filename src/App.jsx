@@ -157,19 +157,25 @@ const INICIO_CURSO = () => {
 }
 const fechaCorta = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : ''
 
+// Enlace a la ventana de redactar de Gmail (no depende de tener un cliente de correo configurado)
+const gmailUrl = (to, asunto = '', cuerpo = '') =>
+  `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to || '')}` +
+  (asunto ? `&su=${encodeURIComponent(asunto)}` : '') +
+  (cuerpo ? `&body=${encodeURIComponent(cuerpo)}` : '')
+
 // Plantilla de primer contacto por email
 const plantillaEmail = (emp, yo) => {
-  const asunto = `IAESTE Madrid - Estudiantes internacionales en practicas para ${emp.nombre || 'su empresa'}`
+  const asunto = `IAESTE Madrid - Estudiantes internacionales en prácticas para ${emp.nombre || 'su empresa'}`
   const cuerpo = [
-    `Buenos dias${emp.contacto ? ' ' + emp.contacto : ''},`, '',
-    'Le escribo desde IAESTE Madrid, el comite de la Universidad Politecnica de Madrid de una asociacion internacional sin animo de lucro que gestiona practicas para estudiantes de ingenieria y ciencias.',
+    `Buenos días${emp.contacto ? ' ' + emp.contacto : ''},`, '',
+    'Le escribo desde IAESTE Madrid, el comité de la Universidad Politécnica de Madrid de una asociación internacional sin ánimo de lucro que gestiona prácticas para estudiantes de ingeniería y ciencias.',
     '',
-    'Nos encargamos de todo el proceso: seleccionamos al estudiante segun el perfil que necesiten, tramitamos la documentacion y le damos alojamiento y acompanamiento durante su estancia. Para la empresa no supone coste de intermediacion.',
+    'Nos encargamos de todo el proceso: seleccionamos al estudiante según el perfil que necesiten, tramitamos la documentación y le damos alojamiento y acompañamiento durante su estancia. Para la empresa no supone coste de intermediación.',
     '',
-    'Si les encaja, ?tendria unos minutos esta semana o la siguiente para contarselo por telefono?',
+    'Si les encaja, ¿tendría unos minutos esta semana o la siguiente para contárselo por teléfono?',
     '', 'Un saludo,', yo || '', 'IAESTE Madrid - ETSIT UPM',
   ].join('\n')
-  return `mailto:${emp.email || ''}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+  return gmailUrl(emp.email, asunto, cuerpo)
 }
 
 // ---------- UI básicos ----------
@@ -308,11 +314,11 @@ function AccionesContacto({ emp, yo }) {
       )}
       {emp.email && (
         <>
-          <a href={`mailto:${emp.email}`}
+          <a href={gmailUrl(emp.email)} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
             <Mail className="w-3.5 h-3.5" />Email
           </a>
-          <a href={plantillaEmail(emp, yo)}
+          <a href={plantillaEmail(emp, yo)} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
             <Send className="w-3.5 h-3.5" />Plantilla de contacto
           </a>
@@ -437,7 +443,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
               {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
               {f.contacto && <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-slate-400" />{f.contacto}</p>}
-              {f.email && <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" /><a href={`mailto:${f.email}`} className="text-blue-700 hover:underline">{f.email}</a></p>}
+              {f.email && <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" /><a href={gmailUrl(f.email)} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">{f.email}</a></p>}
               {f.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /><a href={`tel:${String(f.telefono).replace(/\s/g, '')}`} className="text-blue-700 hover:underline">{f.telefono}</a></p>}
               <div className="pt-1"><AccionesContacto emp={f} yo={me.nombre} /></div>
             </div>
