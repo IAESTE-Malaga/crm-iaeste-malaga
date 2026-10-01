@@ -158,74 +158,105 @@ const INICIO_CURSO = () => {
 const fechaCorta = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : ''
 
 // Enlace a la ventana de redactar de Gmail (no depende de tener un cliente de correo configurado).
-// Usa la cuenta /u/0/ (la primera sesión de Gmail abierta en el navegador). Gmail añade la firma automáticamente.
+// Usa la cuenta /u/0/ (la primera sesión de Gmail abierta en el navegador).
 const gmailUrl = (to, asunto = '', cuerpo = '') =>
   `https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=1&to=${encodeURIComponent(to || '')}` +
   (asunto ? `&su=${encodeURIComponent(asunto)}` : '') +
   (cuerpo ? `&body=${encodeURIComponent(cuerpo)}` : '')
 
-// Plantilla de contacto (la que usa el equipo de empresas). Los adjuntos se añaden a mano en Gmail.
-const SEP = '------------------------------------------------------------------------------------------------------------'
-const plantillaEmail = (emp, yo) => {
-  const asunto = `IAESTE Madrid - Programa de prácticas internacionales para ${emp.nombre || 'su empresa'}`
+// ---------- Plantilla de contacto (equipo de empresas) ----------
+// Se copia al portapapeles como HTML (con formato y logo) y se abre Gmail con destinatario y asunto:
+// el miembro solo tiene que pegar con Ctrl+V. Los adjuntos se añaden a mano en Gmail.
+// El logo se sirve desde /public del propio CRM (crm-iaeste.vercel.app/logo-iaeste-madrid.png).
+const LOGO_URL = 'https://crm-iaeste.vercel.app/logo-iaeste-madrid.png'
+const AZUL = '#0b3d59'
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const SEP = '-'.repeat(108)
+
+const asuntoPlantilla = (emp) =>
+  `IAESTE Madrid - Programa de prácticas internacionales para ${emp.nombre || 'su empresa'}`
+
+const plantillaHtml = (emp, yo) => {
+  const p = (t) => `<p style="margin:0 0 12px 0">${t}</p>`
+  const li = (items) => `<ul style="margin:0 0 12px 0">${items.map((i) => `<li>${i}</li>`).join('')}</ul>`
+  const hr = `<p style="margin:12px 0">${SEP}</p>`
   const cuerpo = [
-    `Buenos días${emp.contacto ? ' ' + emp.contacto : ''},`,
-    '',
-    `Mi nombre es ${yo || '(NOMBRE Y APELLIDO)'} y trabajo como parte de la Asociación internacional IAESTE. Como comenté por teléfono, este correo contiene información básica acerca de nuestro programa de prácticas internacionales, así como una presentación visual adjunta. Si hiciese falta más información al respecto, estamos abiertos a tener una reunión para profundizar más:`,
-    '',
-    'IAESTE (International Association for the Exchange of Students for Technical Experience) es una organización internacional cuyo objetivo es promover la realización de prácticas remuneradas en empresas y entidades de diversos países para estudiantes de especialidades científico-técnicas, fomentando así la excelencia profesional y el desarrollo de las aptitudes personales en entornos multiculturales y pluridisciplinares.',
-    '',
-    'Adjunto para su información:',
-    '- Presentación programa IAESTE',
-    '- Modelo convenio',
-    '',
-    'Si están interesados en formalizar una oferta de prácticas a través del programa de movilidad IAESTE, el proceso sería el siguiente:',
-    '',
-    'Cumplimentar y enviar a iaestetlmd@gmail.com la siguiente documentación:',
-    '- Formulario oferta prácticas (1 por plaza ofertada). En este documento se detalla el perfil buscado.',
-    '- Compromiso empresa',
-    '- Acuerdo corresponsabilidad tratamiento datos',
-    '',
-    'Características generales de la oferta de prácticas:',
-    '',
-    '   - La empresa determina la duración y el periodo de la práctica, con duración mínima de 6 semanas y máximo 1 año.',
-    '   - El becario trabajará un máximo de 40 horas semanales de lunes a viernes.',
-    '   - El becario recibirá una remuneración mínima de 800 euros netos mensuales por parte de la empresa, de forma que pueda mantenerse durante la práctica en nuestro país (con la posibilidad de ofrecer alojamiento, manutención y transporte, en lugar de la remuneración).',
-    '   - La empresa recibirá el perfil de un estudiante que cumpla los requisitos solicitados (un perfil por oferta). Se dispondrá del plazo de dos semanas para evaluar y/o entrevistar al estudiante de forma online si se considera necesario.',
-    '   - Tras la evaluación del perfil proporcionado, la empresa aceptará o rechazará al estudiante. Si este es aceptado, se procederá a la firma de un convenio entre IAESTE España, becario y la empresa que permita la incorporación del estudiante. En ningún caso será necesario un contrato laboral.',
-    '',
-    SEP,
-    '',
-    'Indicarles que en el caso de becarios o recién graduados extracomunitarios que vengan a España a realizar una práctica mediante convenio por un periodo superior a 90 días y en aplicación del Real Decreto Ley 11/2018 de 31 de agosto- Disposición adicional decimoctava deberán estar provistos de la Autorización de residencia para prácticas no laborales mediante convenio.',
-    '',
-    'Para ello, la entidad que acoge al becario en prácticas (la empresa) debe solicitar de manera telemática a través de la plataforma MERCURIO https://sede.administracionespublicas.gob.es/mercurio/inicioMercurio.html esta Autorización de residencia para prácticas no laborales mediante convenio, en los términos que se indica en esta disposición.',
-    '',
-    'A la recepción del convenio les remitiremos copia firmada por IAESTE y Estudiante junto con resto de documentación requerida por la Administración, para que procedan a la solicitud de autorización para estancia por prácticas no laborales.',
-    '',
-    'La resolución de esta autorización se resolverá en el plazo máximo de 30 días. Si no se resuelve en dicho plazo, la autorización se entenderá estimada por silencio administrativo. Al día siguiente de que expire ese plazo la empresa deberá solicitar a la Administración el correspondiente Certificado de silencio.',
-    '',
-    SEP,
-    '',
-    'Por último, informarles que deberán en su momento solicitar el nº de seguridad social y posterior alta en la TGSS como becario en prácticas externas.',
-    '',
-    'A estos efectos, la Administración ha abierto la posibilidad de que los autorizados al sistema RED (las empresas) realicen dicha solicitud a través de CASIA en relación con los trabajadores respecto de los cuales van a comunicar con posterioridad su alta. Para ello, se ha creado un nuevo trámite, “Solicitud de número de Seguridad Social”, que se encuentra ya disponible dentro de las subcategorías correspondientes a los trámites de Afiliación, altas y bajas < Altas de trabajadores cuenta ajena.',
-    '',
-    'La documentación que deberá acompañar a dicha solicitud será la siguiente:',
-    'TA.1 firmado por el becario, pasaporte o ID, NIE y convenio',
-    '',
-    '• ALTA',
-    '',
-    'Una vez la empresa disponga del CCC específico y del número de Seguridad Social del estudiante extranjero, el alta en el Régimen General de la Seguridad Social de los estudiantes se deberá realizar mediante el mismo procedimiento que el de un trabajador por cuenta ajena, realizando el trámite ante la Seguridad Social presencialmente o a través del Sistema Red.',
-    '',
-    'Código de alta: 1',
-    'Exclusión cotización: 986 (programas de formación)',
-    'Y la Relación Laboral de Carácter Especial (RLCE) dependiendo de si las prácticas son curriculares o extracurriculares:',
-    '·  Curriculares: 9928',
-    '·  Extracurriculares: 9927',
-    '',
-    'Quedamos a su disposición para cualquier consulta que tengan o para fijar una reunión. Gracias de antemano y un saludo,',
-  ].join('\n')
-  return gmailUrl(emp.email, asunto, cuerpo)
+    p(`Buenos días${emp.contacto ? ' ' + esc(emp.contacto) : ''},`),
+    p(`Mi nombre es ${esc(yo || '(NOMBRE Y APELLIDO)')} y trabajo como parte de la Asociación internacional IAESTE. Como comenté por teléfono, este correo contiene información básica acerca de nuestro programa de prácticas internacionales, así como una presentación visual adjunta. Si hiciese falta más información al respecto, estamos abiertos a tener una reunión para profundizar más:`),
+    p('<b>IAESTE</b> (International Association for the Exchange of Students for Technical Experience) es una organización internacional cuyo objetivo es promover la realización de prácticas remuneradas en empresas y entidades de diversos países para estudiantes de especialidades científico-técnicas, fomentando así la excelencia profesional y el desarrollo de las aptitudes personales en entornos multiculturales y pluridisciplinares.'),
+    p('Adjunto para su información:'),
+    li(['Presentación programa IAESTE', 'Modelo convenio']),
+    p('Si están interesados en formalizar una oferta de prácticas a través del programa de movilidad IAESTE, el proceso sería el siguiente:'),
+    p('Cumplimentar y enviar a <a href="mailto:iaestetlmd@gmail.com">iaestetlmd@gmail.com</a> la siguiente documentación:'),
+    li(['Formulario oferta prácticas (1 por plaza ofertada). En este documento se detalla el perfil buscado.', 'Compromiso empresa', 'Acuerdo corresponsabilidad tratamiento datos']),
+    p('<b>Características generales de la oferta de prácticas:</b>'),
+    li([
+      'La empresa determina la duración y el periodo de la práctica, con duración mínima de 6 semanas y máximo 1 año.',
+      'El becario trabajará un máximo de 40 horas semanales de lunes a viernes.',
+      'El becario recibirá una remuneración mínima de 800 euros netos mensuales por parte de la empresa, de forma que pueda mantenerse durante la práctica en nuestro país (con la posibilidad de ofrecer alojamiento, manutención y transporte, en lugar de la remuneración).',
+      'La empresa recibirá el perfil de un estudiante que cumpla los requisitos solicitados (un perfil por oferta). Se dispondrá del plazo de dos semanas para evaluar y/o entrevistar al estudiante de forma online si se considera necesario.',
+      'Tras la evaluación del perfil proporcionado, la empresa aceptará o rechazará al estudiante. Si este es aceptado, se procederá a la firma de un convenio entre IAESTE España, becario y la empresa que permita la incorporación del estudiante. En ningún caso será necesario un contrato laboral.',
+    ]),
+    hr,
+    p('Indicarles que en el caso de becarios o recién graduados extracomunitarios que vengan a España a realizar una práctica mediante convenio por un periodo superior a 90 días y en aplicación del Real Decreto Ley 11/2018 de 31 de agosto- Disposición adicional decimoctava deberán estar provistos de la Autorización de residencia para prácticas no laborales mediante convenio.'),
+    p('Para ello, la entidad que acoge al becario en prácticas (la empresa) debe solicitar de manera telemática a través de la plataforma MERCURIO <a href="https://sede.administracionespublicas.gob.es/mercurio/inicioMercurio.html">https://sede.administracionespublicas.gob.es/mercurio/inicioMercurio.html</a> esta Autorización de residencia para prácticas no laborales mediante convenio, en los términos que se indica en esta disposición.'),
+    p('A la recepción del convenio les remitiremos copia firmada por IAESTE y Estudiante junto con resto de documentación requerida por la Administración, para que procedan a la solicitud de autorización para estancia por prácticas no laborales.'),
+    p('La resolución de esta autorización se resolverá en el plazo máximo de 30 días. Si no se resuelve en dicho plazo, la autorización se entenderá estimada por silencio administrativo. Al día siguiente de que expire ese plazo la empresa deberá solicitar a la Administración el correspondiente Certificado de silencio.'),
+    hr,
+    p('Por último, informarles que deberán en su momento solicitar el nº de seguridad social y posterior alta en la TGSS como becario en prácticas externas.'),
+    p('A estos efectos, la Administración ha abierto la posibilidad de que los autorizados al sistema RED (las empresas) realicen dicha solicitud a través de CASIA en relación con los trabajadores respecto de los cuales van a comunicar con posterioridad su alta. Para ello, se ha creado un nuevo trámite, “Solicitud de número de Seguridad Social”, que se encuentra ya disponible dentro de las subcategorías correspondientes a los trámites de Afiliación, altas y bajas &lt; Altas de trabajadores cuenta ajena.'),
+    p('La documentación que deberá acompañar a dicha solicitud será la siguiente:'),
+    p('TA.1 firmado por el becario, pasaporte o ID, NIE y convenio'),
+    p('<b>• ALTA</b>'),
+    p('Una vez la empresa disponga del CCC específico y del número de Seguridad Social del estudiante extranjero, el alta en el Régimen General de la Seguridad Social de los estudiantes se deberá realizar mediante el mismo procedimiento que el de un trabajador por cuenta ajena, realizando el trámite ante la Seguridad Social presencialmente o a través del Sistema Red.'),
+    p('Código de alta: 1<br>Exclusión cotización: 986 (programas de formación)<br>Y la Relación Laboral de Carácter Especial (RLCE) dependiendo de si las prácticas son curriculares o extracurriculares:<br>·&nbsp; Curriculares: 9928<br>·&nbsp; Extracurriculares: 9927'),
+    p('Quedamos a su disposición para cualquier consulta que tengan o para fijar una reunión. Gracias de antemano y un saludo,'),
+  ].join('')
+
+  const legal = 'font-family:Tahoma,Verdana,sans-serif;font-size:11px;line-height:1.7;color:#002e7a;text-align:justify;margin:0'
+  const firma = `
+<div style="font-family:Tahoma,Verdana,sans-serif;font-size:13px;color:${AZUL};margin-top:24px">
+  <b>${esc(yo || 'Enrique Rodríguez Palomo')}</b><br>
+  Equipo de Empresas IAESTE TLMA<br><br>
+  <b>IAESTE Telecomunicación Madrid</b><br>
+  E.T.S.I. Telecomunicación Madrid - Local 206 - L<br>
+  Avenida Complutense, 30, 28040, Madrid<br>
+  <a href="https://www.iaeste.es" style="color:#1155cc">www.iaeste.es</a><br><br>
+  <img src="${LOGO_URL}" alt="IAESTE Madrid" width="240" height="73" style="display:block;border:0"><br>
+</div>
+<p style="${legal}">${'-'.repeat(134)}</p>
+<p style="${legal}"><b><u>Legal notice</u>:</b></p>
+<p style="${legal}"><b><u>Data protection</u>.</b> IAESTE ESPAÑA informs you that your email address, as well as the rest of your personal data, will be used for contacting you and providing you with our services. This data is necessary to communicate with you, which allows us to use your information within legal limits. Additionally, entities which require access to your information so that we can provide our services may have access to it. We will keep your data during our relationship and for the period required by applicable law. You may contact us at any time to find out the information we have on you, correct it if it is incorrect and delete it once our relationship has ended. You also have the right to request the transfer of your information to another entity (portability). To request any of these rights, you must make a written request to our address, along with a photocopy of your DNI identity document: IAESTE ESPAÑA, UNIVERSIDAD POLITÉCNICA DE VALENCIA, EDIFICIO 8K, PLANTA BAJA, ALA OESTE, DESPACHOS 11-13,CP 46022 VALENCIA. In case of considering your rights to have been neglected, you can lodge a claim before the Spanish Data Protection Agency (<a href="https://www.agpd.es" style="color:#1155cc">www.agpd.es</a>).</p>
+<p style="${legal}"><b><u>Confidentiality</u>.</b> - The content of this communication, as well as all documentation attached, is confidential and intended for its recipient. In the case of you not being the intended recipient, we request that you notify us and do not communicate its content to third parties, proceeding to delete it.</p>
+<p style="${legal}"><b><u>Exemption from liability</u>.</b> - The sending of this communication does not entail the sender’s obligation to monitor the absence of viruses, worms, trojan horses and/or any other harmful computer program, the recipient having to have the necessary hardware and software tools to guarantee both the security of their information system and the detection and elimination of harmful computer programs. IAESTE ESPAÑA is not liable for liquidated damages that such computer programs may cause to the recipient.</p>`
+
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">${cuerpo}</div>${firma}`
+}
+
+// Versión en texto plano (por si el destino del pegado no acepta HTML)
+const htmlATexto = (html) => {
+  const d = document.createElement('div')
+  d.innerHTML = html.replace(/<\/(p|li|div)>/g, '</$1>\n').replace(/<li>/g, '<li>- ')
+  return d.innerText.replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// Copia la plantilla con formato al portapapeles. Devuelve true si se ha podido.
+const copiarPlantilla = async (emp, yo) => {
+  const html = plantillaHtml(emp, yo)
+  const texto = htmlATexto(html)
+  try {
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([texto], { type: 'text/plain' }),
+      })])
+      return true
+    }
+    await navigator.clipboard.writeText(texto)
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ---------- UI básicos ----------
@@ -352,27 +383,45 @@ function Auth() {
 
 // ---------- Acciones rápidas: llamar / email / plantilla ----------
 function AccionesContacto({ emp, yo }) {
+  const [copiada, setCopiada] = useState(null) // null | 'ok' | 'error'
   if (!emp.telefono && !emp.email) return null
   const tel = String(emp.telefono || '').replace(/\s/g, '')
+  const usarPlantilla = () => {
+    // Se llama dentro del clic (antes de que se abra la pestaña de Gmail) para que el navegador permita copiar
+    copiarPlantilla(emp, yo).then((ok) => {
+      setCopiada(ok ? 'ok' : 'error')
+      setTimeout(() => setCopiada(null), 8000)
+    })
+  }
   return (
-    <div className="flex flex-wrap gap-2">
-      {emp.telefono && (
-        <a href={`tel:${tel}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
-          <Phone className="w-3.5 h-3.5" />Llamar
-        </a>
-      )}
-      {emp.email && (
-        <>
-          <a href={gmailUrl(emp.email)} target="_blank" rel="noopener noreferrer"
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        {emp.telefono && (
+          <a href={`tel:${tel}`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
-            <Mail className="w-3.5 h-3.5" />Email
+            <Phone className="w-3.5 h-3.5" />Llamar
           </a>
-          <a href={plantillaEmail(emp, yo)} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
-            <Send className="w-3.5 h-3.5" />Plantilla de contacto
-          </a>
-        </>
+        )}
+        {emp.email && (
+          <>
+            <a href={gmailUrl(emp.email)} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              <Mail className="w-3.5 h-3.5" />Email
+            </a>
+            <a href={gmailUrl(emp.email, asuntoPlantilla(emp))} target="_blank" rel="noopener noreferrer"
+              title="Copia la plantilla con formato y abre Gmail: pega con Ctrl+V en el cuerpo"
+              onClick={usarPlantilla}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
+              <Send className="w-3.5 h-3.5" />Plantilla de contacto
+            </a>
+          </>
+        )}
+      </div>
+      {copiada === 'ok' && (
+        <p className="text-xs text-emerald-700">Plantilla copiada. En Gmail, haz clic en el cuerpo del correo y pega con Ctrl+V (Cmd+V en Mac). Recuerda adjuntar la presentación y el modelo de convenio.</p>
+      )}
+      {copiada === 'error' && (
+        <p className="text-xs text-red-600">No se ha podido copiar la plantilla. Vuelve a pulsar el botón con esta pestaña en primer plano.</p>
       )}
     </div>
   )
