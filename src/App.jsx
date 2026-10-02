@@ -934,6 +934,54 @@ function GraficaEmpresas({ users, companies }) {
   )
 }
 
+// Puntos por persona en [desde, hasta]. Lo usan el panel de admin (Actividad) y el Ranking.
+// todo: historial hasta «hasta» (incluye lo anterior, que hace falta para las quincenas).
+// companies: empresas actuales (id, responsable, nombre); lo de empresas borradas no cuenta.
+function calcularPuntos({ todo, companies, users, desde, hasta }) {
+  const idsVivos = new Set(companies.map((c) => c.id))
+  const iniRango = new Date(desde + 'T00:00:00')
+  // Lo de empresas ya eliminadas no cuenta: al borrar una empresa chorra, sus puntos desaparecen del periodo.
+  const filas = marcarNotasConEstado(todo.filter((h) => new Date(h.creado) >= iniRango && (!companies.length || idsVivos.has(h.empresa_id))))
+
+  // Quincenas cerradas cuyo último día cae dentro del rango, como filas más del desglose
+  const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
+  const quincenas = []
+  for (const [uid, qs] of Object.entries(evaluarQuincenas(todo, companies, hasta))) {
+    for (const q of qs) {
+      const ultimo = diaMas(q.fin, -1)
+      if (q.enCurso || ultimo < desde || ultimo > hasta) continue
+      quincenas.push({
+        id: `q-${uid}-${q.ini}`, usuario_id: uid, usuario_nombre: nombreDeUsuario(uid), accion: 'quincena',
+        empresa_nombre: `Quincena ${fechaCorta(q.ini)} – ${fechaCorta(ultimo)}`,
+        detalle: q.cumple
+          ? `${q.hechas}/${q.total} empresas seguidas`
+          : `${q.hechas}/${q.total} · faltó: ${q.faltan.map((c) => c.nombre).join(', ')}`,
+        cumple: q.cumple, creado: q.fin + 'T00:00:00',
+      })
+    }
+  }
+  const movimientos = [...filas, ...quincenas].sort((a, b) => new Date(b.creado) - new Date(a.creado))
+
+  const resumen = movimientos.reduce((acc, h) => {
+    const k = h.usuario_id || h.usuario_nombre
+    acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
+    const r = acc[k]
+    if (r[h.accion] !== undefined && !h.conEstado) r[h.accion]++
+    if (h.accion === 'estado' && h.estado_nuevo === 'beca') r.becas++
+    if (h.accion === 'quincena' && h.cumple) r.quincenas++
+    r.puntos += puntosDe(h)
+    r.filas.push(h)
+    return acc
+  }, {})
+
+  // Gente sin ni una acción en el periodo: también interesa verla, con un 0
+  users.forEach((u) => {
+    if (!resumen[u.id]) resumen[u.id] = { id: u.id, nombre: u.nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
+  })
+  const lista = Object.values(resumen).sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
+  return { lista }
+}
+
 // ---------- Actividad y puntos del equipo (a partir del historial) ----------
 function Actividad({ users, companies }) {
   const [desde, setDesde] = useState(INICIO_CURSO())
@@ -1002,46 +1050,7 @@ function Actividad({ users, companies }) {
     }
   }
 
-  const iniRango = new Date(desde + 'T00:00:00')
-  // Lo de empresas ya eliminadas no cuenta: al borrar una empresa chorra, sus puntos desaparecen del periodo.
-  const filas = marcarNotasConEstado((todo || []).filter((h) => new Date(h.creado) >= iniRango && (!companies.length || idsVivos.has(h.empresa_id))))
-
-  // Quincenas cerradas cuyo último día cae dentro del rango, como filas más del desglose
-  const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
-  const quincenas = []
-  for (const [uid, qs] of Object.entries(evaluarQuincenas(todo || [], companies, hasta))) {
-    for (const q of qs) {
-      const ultimo = diaMas(q.fin, -1)
-      if (q.enCurso || ultimo < desde || ultimo > hasta) continue
-      quincenas.push({
-        id: `q-${uid}-${q.ini}`, usuario_id: uid, usuario_nombre: nombreDeUsuario(uid), accion: 'quincena',
-        empresa_nombre: `Quincena ${fechaCorta(q.ini)} – ${fechaCorta(ultimo)}`,
-        detalle: q.cumple
-          ? `${q.hechas}/${q.total} empresas seguidas`
-          : `${q.hechas}/${q.total} · faltó: ${q.faltan.map((c) => c.nombre).join(', ')}`,
-        cumple: q.cumple, creado: q.fin + 'T00:00:00',
-      })
-    }
-  }
-  const movimientos = [...filas, ...quincenas].sort((a, b) => new Date(b.creado) - new Date(a.creado))
-
-  const resumen = movimientos.reduce((acc, h) => {
-    const k = h.usuario_id || h.usuario_nombre
-    acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
-    const r = acc[k]
-    if (r[h.accion] !== undefined && !h.conEstado) r[h.accion]++
-    if (h.accion === 'estado' && h.estado_nuevo === 'beca') r.becas++
-    if (h.accion === 'quincena' && h.cumple) r.quincenas++
-    r.puntos += puntosDe(h)
-    r.filas.push(h)
-    return acc
-  }, {})
-
-  // Gente sin ni una acción en el periodo: también interesa verla, con un 0
-  users.forEach((u) => {
-    if (!resumen[u.id]) resumen[u.id] = { id: u.id, nombre: u.nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
-  })
-  const lista = Object.values(resumen).sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
+  const { lista } = calcularPuntos({ todo: todo || [], companies, users, desde, hasta })
 
   const exportar = () => {
     const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Becas', 'Quincenas cumplidas', 'Puntos']
@@ -1190,6 +1199,85 @@ function Actividad({ users, companies }) {
     </div>
   )
 }
+// ---------- Ranking (visible para todo el equipo) ----------
+const INICIO_MES = () => { const d = new Date(); return isoDia(new Date(d.getFullYear(), d.getMonth(), 1)) }
+function Ranking({ users, me }) {
+  const [periodo, setPeriodo] = useState('mes')
+  const [datos, setDatos] = useState(null)
+  const [err, setErr] = useState('')
+  const hasta = HOY()
+  const desde = periodo === 'mes' ? INICIO_MES() : periodo === '7' ? sumarDias(-7) : INICIO_CURSO()
+
+  useEffect(() => {
+    setDatos(null); setErr('')
+    supabase.rpc('ranking_datos', { p_hasta: hasta }).then(({ data, error }) => {
+      if (error) { setErr('No se ha podido cargar el ranking. ¿Se ha ejecutado migracion_ranking.sql en Supabase?'); setDatos({ hist: [], empresas: [] }) }
+      else setDatos(data || { hist: [], empresas: [] })
+    })
+  }, [hasta])
+
+  const lista = datos
+    ? calcularPuntos({ todo: datos.hist || [], companies: datos.empresas || [], users, desde, hasta })
+      .lista.filter((d) => users.some((u) => u.id === d.id))
+    : []
+  // Misma puntuación = mismo puesto
+  const puesto = (i) => (i > 0 && lista[i - 1].puntos === lista[i].puntos ? puesto(i - 1) : i + 1)
+  const max = Math.max(1, ...lista.map((d) => d.puntos))
+  const yo = lista.findIndex((d) => d.id === me.id)
+  const medalla = ['bg-amber-400 text-amber-950', 'bg-slate-300 text-slate-800', 'bg-orange-300 text-orange-950']
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <div className="bg-[#0e2d4d] rounded-2xl p-5 text-white shadow-[0_4px_16px_rgba(13,43,69,0.18)]">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-lg font-bold flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-300" />Ranking del equipo</h2>
+          <div className="flex gap-1 bg-white/10 rounded-full p-1">
+            {[['mes', 'Este mes'], ['curso', 'Curso'], ['7', '7 días']].map(([id, label]) => (
+              <button key={id} onClick={() => setPeriodo(id)}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${periodo === id ? 'bg-white text-[#0e2d4d] font-bold' : 'text-white/80 hover:bg-white/[0.08]'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {datos && yo >= 0 && (
+          <p className="mt-3 text-sm text-white/80">
+            Vas <strong className="text-white">{puesto(yo)}º</strong> de {lista.length} con <strong className="text-white">{lista[yo].puntos} punto{lista[yo].puntos !== 1 ? 's' : ''}</strong>
+            {yo > 0 && lista[yo - 1].puntos > lista[yo].puntos && <> · te faltan {lista[yo - 1].puntos - lista[yo].puntos} para subir un puesto</>}
+          </p>
+        )}
+      </div>
+
+      {err && <p className="text-sm text-rose-600">{err}</p>}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden divide-y divide-slate-100">
+        {datos === null ? (
+          <p className="p-6 text-sm text-slate-400">Cargando…</p>
+        ) : lista.map((d, i) => {
+          const p = puesto(i)
+          const mio = d.id === me.id
+          return (
+            <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${mio ? 'bg-blue-50/60' : ''}`}>
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${p <= 3 && d.puntos > 0 ? medalla[p - 1] : 'bg-slate-100 text-slate-500'}`}>{p}</span>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm truncate ${mio ? 'font-bold text-[#0e2d4d]' : 'font-medium text-slate-800'}`}>{d.nombre}{mio && ' (tú)'}</p>
+                <div className="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                  <div className="h-full bg-[#0e2d4d] rounded-full" style={{ width: `${(d.puntos / max) * 100}%` }} />
+                </div>
+              </div>
+              {d.becas > 0 && <span className="hidden sm:inline text-xs text-emerald-700 font-medium shrink-0">{d.becas} beca{d.becas !== 1 ? 's' : ''}</span>}
+              <span className="w-12 text-right text-sm font-bold text-slate-900 tabular-nums shrink-0">{d.puntos}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-xs text-slate-500 px-1">
+        Seguimiento con cambio de estado {PUNTOS.estado._} · nota {PUNTOS.nota} · alta de empresa {PUNTOS.alta} ·
+        muy interesados {PUNTOS.estado.interesados} · beca {PUNTOS.estado.beca} · quincena cumplida {PUNTOS.quincena}.
+      </p>
+    </div>
+  )
+}
+
 // ---------- Equipo (solo admin) ----------
 function Equipo({ users, companies, me, onChanged }) {
   const [err, setErr] = useState('')
@@ -1470,9 +1558,9 @@ export default function App() {
             <span className="hidden sm:inline text-sm text-white/60 font-medium border-l border-white/20 pl-2.5">Madrid · CRM</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3">
-            {isAdmin && (
+            {(
               <nav className="flex gap-0.5 sm:gap-1">
-                {[['empresas', 'Empresas'], ['equipo', 'Equipo']].map(([id, label]) => (
+                {[['empresas', 'Empresas'], ...(isAdmin ? [['equipo', 'Equipo']] : []), ['ranking', 'Ranking']].map(([id, label]) => (
                   <button
                     key={id}
                     onClick={() => setTab(id)}
@@ -1504,7 +1592,9 @@ export default function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {tab === 'equipo' && isAdmin ? (
+        {tab === 'ranking' ? (
+          <Ranking users={users} me={me} />
+        ) : tab === 'equipo' && isAdmin ? (
           <Equipo users={users} companies={companies} me={me} onChanged={cargar} />
         ) : (
           <>
