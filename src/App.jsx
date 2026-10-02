@@ -21,13 +21,16 @@ const ESTADOS = [
 ]
 // Apartados de la lista de empresas: cada estado pertenece a uno
 const GRUPOS = [
-  { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'] },
-  { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'] },
-  { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'] },
+  { id: 'mias', label: 'Mis empresas', estados: null, mias: true, soloMiembro: true },
+  { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'], soloAdmin: true },
+  { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'], soloAdmin: true },
+  { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'], soloAdmin: true },
   { id: 'historicas', label: 'Históricas', estados: null, historicas: true, soloAdmin: true },
   { id: 'todas', label: 'Todas', estados: null },
 ]
-const enGrupo = (g, c) => (g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado)))
+const enGrupo = (g, c, meId) => (g.mias ? c.responsable === meId : g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado)))
+// Normaliza un CIF para comparar: sin espacios, guiones ni puntos y en mayúsculas
+const cifNorm = (cif) => String(cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
 // Texto «2023 (3 prácticas) y 2024 (1 práctica)» a partir de las filas de la tabla practicas
 // (año o número pueden venir vacíos en las históricas importadas del Excel)
 const textoPracticas = (lista = []) => {
@@ -495,6 +498,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   const guardar = async (cambios = {}, mensaje, notaAuto = '') => {
     const f = { ...fForm, ...cambios }
     if (camposEditables && !f.nombre.trim()) { setErr('La empresa necesita un nombre.'); return }
+    if (cifDup) { setErr(`Ese CIF ya es de «${cifDup.nombre}». No se pueden repetir CIF en el CRM.`); return }
     // Cada seguimiento es una nota nueva; cambiar de estado obliga a escribirla
     const nota = (nuevaNota.trim() || notaAuto).slice(0, 500)
     if (!nueva && f.estado !== empresa.estado && !nota) {
@@ -543,15 +547,19 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
       }
       onSaved(mensaje)
     } catch (e) {
-      setErr(e.message)
+      // La base de datos también impide CIF repetidos (por si la empresa no se ve desde esta cuenta)
+      setErr(e.code === '23505' && /cif/i.test(e.message || '')
+        ? 'Ya hay una empresa con ese CIF en el CRM. No se pueden repetir CIF.'
+        : e.message)
     } finally {
       setBusy(false)
     }
   }
 
-  const cifDup = nueva && (f.cif || '').trim().length > 5
-    ? todas.find((c) => (c.cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === f.cif.replace(/[^A-Z0-9]/gi, '').toUpperCase())
+  const cifDup = cifNorm(f.cif).length > 5 && (nueva || cifNorm(f.cif) !== cifNorm(empresa.cif))
+    ? todas.find((c) => c.id !== f.id && cifNorm(c.cif) === cifNorm(f.cif))
     : null
+  const nombreResp = (id) => (id === me.id ? 'ti' : users.find((u) => u.id === id)?.nombre || null)
 
   const borrarPracticas = async (p) => {
     if (!confirm(`¿Quitar las prácticas de ${p.anio || 'año sin registrar'}? Si no le quedan otras, dejará de ser histórica.`)) return
@@ -617,6 +625,42 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     </>
   )
 
+  // Un miembro puede ver todas las empresas, pero solo editar las suyas
+  if (!isAdmin && !nueva && empresa.responsable !== me.id) {
+    const dato = (Icono, v, href) => v && (
+      <p className="flex items-start gap-2"><Icono className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+        {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline break-all">{v}</a> : <span className="break-words">{v}</span>}</p>
+    )
+    return (
+      <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+        <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+            <h2 className="font-bold text-slate-900">{f.nombre}</h2>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="p-6 space-y-4 text-sm text-slate-700">
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
+              <span className="flex items-center gap-2"><User className="w-4 h-4 text-slate-400" />
+                {empresa.responsable ? <>La lleva <strong>{nombreResp(empresa.responsable) || 'otra persona'}</strong></> : 'Sin asignar'}</span>
+              <Badge estadoId={f.estado} />
+            </div>
+            <div className="space-y-2">
+              {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
+              {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
+              {dato(User, f.contacto)}
+              {dato(Phone, f.telefono, f.telefono ? `tel:${String(f.telefono).replace(/\s/g, '')}` : null)}
+              {dato(Mail, f.email)}
+              {dato(MapPin, f.direccion, f.direccion ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}` : null)}
+            </div>
+            <p className="text-xs text-slate-500 border-t border-slate-100 pt-3">
+              Solo puede editarla {empresa.responsable ? 'su responsable' : 'quien la tenga asignada'} o un admin. Si quieres llevarla tú, pídeselo a un admin.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -655,7 +699,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               {cifDup && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  Ese CIF ya existe en el CRM: <strong>{cifDup.nombre}</strong>. Puedes guardar igualmente, pero comprueba que no sea la misma empresa.
+                  <span>Esta empresa ya está en el CRM: <strong>{cifDup.nombre}</strong>{cifDup.responsable ? <> (asignada a {nombreResp(cifDup.responsable) || 'otra persona'})</> : ' (sin asignar)'}. No se pueden repetir CIF.</span>
                 </p>
               )}
               <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, telecos…" /></div>
@@ -818,7 +862,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
             {isAdmin && !nueva ? (
               <Btn variant="danger" onClick={eliminar}><Trash2 className="w-4 h-4" />Eliminar</Btn>
             ) : <span />}
-            <Btn onClick={() => guardar()} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
+            <Btn onClick={() => guardar()} disabled={busy || !!cifDup}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
           </div>
         </div>
       </div>
@@ -1534,6 +1578,9 @@ export default function App() {
   const nAtrasadas = companies.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
   const nHoy = companies.filter((c) => c.proximo_contacto === hoy).length
 
+  // Los miembros solo tienen «Mis empresas» y «Todas»; los admins, el resto de apartados
+  const gruposVisibles = GRUPOS.filter((g) => (isAdmin ? !g.soloMiembro : !g.soloAdmin))
+  const grupoEf = gruposVisibles.some((g) => g.id === grupo) ? grupo : gruposVisibles[0].id
   const visibles = companies
     .filter((c) => {
       if (agenda === 'hoy') return c.proximo_contacto && c.proximo_contacto <= hoy
@@ -1541,12 +1588,15 @@ export default function App() {
       return true
     })
     // Con «Para hoy» / «Atrasadas» activo se ven todas las que tocan, sea cual sea el apartado
-    .filter((c) => agenda || enGrupo(grupoDe(grupo), c))
+    .filter((c) => agenda || enGrupo(grupoDe(grupoEf), c, me.id))
     .filter((c) => !filtroEstado || c.estado === filtroEstado)
     .filter((c) => !filtroPersona || c.responsable === filtroPersona)
     .filter((c) => {
       const q = busca.toLowerCase()
-      return !q || c.nombre.toLowerCase().includes(q) || (c.contacto || '').toLowerCase().includes(q) || (c.sector || '').toLowerCase().includes(q) || (c.cif || '').toLowerCase().includes(q)
+      if (!q) return true
+      const qCif = cifNorm(q)
+      return [c.nombre, c.contacto, c.sector, c.cif, c.direccion, c.email, c.responsable ? nombreDe(c.responsable) : '']
+        .some((v) => (v || '').toLowerCase().includes(q)) || (qCif.length >= 4 && cifNorm(c.cif).includes(qCif))
     })
 
   return (
@@ -1643,27 +1693,29 @@ export default function App() {
               </div>
             )}
 
-            <div className={`flex sm:grid ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]`}>
-              {GRUPOS.filter((g) => !g.soloAdmin || isAdmin).map((g) => {
-                const n = companies.filter((c) => enGrupo(g, c)).length
+            <div className={`flex sm:grid ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-2'} gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]`}>
+              {gruposVisibles.map((g) => {
+                const n = companies.filter((c) => enGrupo(g, c, me.id)).length
                 return (
                   <button
                     key={g.id}
                     onClick={() => { setGrupo(g.id); setFiltroEstado('') }}
                     className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-full text-sm transition-colors ${
-                      grupo === g.id ? 'bg-white text-[#0e2d4d] font-bold shadow-sm' : 'text-white/85 font-medium hover:bg-white/[0.08]'
+                      grupoEf === g.id ? 'bg-white text-[#0e2d4d] font-bold shadow-sm' : 'text-white/85 font-medium hover:bg-white/[0.08]'
                     }`}
                   >
-                    {g.label} <span className={grupo === g.id ? 'text-[#0e2d4d]/50' : 'text-white/50'}>· {n}</span>
+                    {g.label} <span className={grupoEf === g.id ? 'text-[#0e2d4d]/50' : 'text-white/50'}>· {n}</span>
                   </button>
                 )
               })}
             </div>
 
             {(() => {
-              const g = grupoDe(grupo)
-              const delGrupo = companies.filter((c) => enGrupo(g, c))
-              const chips = ESTADOS.filter((e) => (g.historicas ? delGrupo.some((c) => c.estado === e.id) : (!g.estados || g.estados.includes(e.id))))
+              const g = grupoDe(grupoEf)
+              // A los miembros no se les ponen filtros de estado en «Todas», para no saturar
+              if (!isAdmin && g.id === 'todas') return <div className="mb-2" />
+              const delGrupo = companies.filter((c) => enGrupo(g, c, me.id))
+              const chips = ESTADOS.filter((e) => ((g.historicas || g.mias) ? delGrupo.some((c) => c.estado === e.id) : (!g.estados || g.estados.includes(e.id))))
               if (chips.length < 2) return <div className="mb-2" />
               const total = delGrupo.length
               return (
@@ -1696,7 +1748,7 @@ export default function App() {
             <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-4">
               <div className="relative flex-1 basis-full sm:basis-auto">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, CIF, contacto o sector…" className="pl-9" />
+                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, CIF, contacto, sector o responsable…" className="pl-9" />
               </div>
               {isAdmin && (
                 <>
@@ -1752,11 +1804,9 @@ export default function App() {
                         {[c.cif, c.sector, c.contacto].filter(Boolean).join(' · ') || '—'}
                       </p>
                     </div>
-                    {isAdmin && (
-                      <span className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 shrink-0">
-                        <User className="w-3.5 h-3.5" />{nombreDe(c.responsable)}
-                      </span>
-                    )}
+                    <span className={`hidden md:flex items-center gap-1.5 text-xs shrink-0 ${c.responsable === me.id ? 'text-[#0e2d4d] font-semibold' : 'text-slate-500'}`}>
+                      <User className="w-3.5 h-3.5" />{c.responsable === me.id ? 'Tú' : nombreDe(c.responsable)}
+                    </span>
                     {c.proximo_contacto && (
                       <span className={`hidden sm:inline-flex items-center gap-1 text-xs font-medium shrink-0 px-2 py-0.5 rounded-full border ${
                         c.proximo_contacto < hoy
