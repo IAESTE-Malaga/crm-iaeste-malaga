@@ -16,8 +16,17 @@ const ESTADOS = [
   { id: 'otra_provincia', label: 'Otra provincia', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
   { id: 'interesados', label: 'Muy interesados', color: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
   { id: 'beca', label: 'Beca conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+  { id: 'no_existe', label: 'Ya no existe', color: 'bg-stone-100 text-stone-500 border-stone-300 line-through', dot: 'bg-stone-400' },
   { id: 'rechazada', label: 'No quieren', color: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
 ]
+// Apartados de la lista de empresas: cada estado pertenece a uno
+const GRUPOS = [
+  { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'] },
+  { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'] },
+  { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'] },
+  { id: 'todas', label: 'Todas', estados: null },
+]
+const grupoDe = (id) => GRUPOS.find((g) => g.id === id) || GRUPOS[GRUPOS.length - 1]
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 
 // Cuántas empresas sin contactar se asignan de golpe y a partir de cuántas se avisa
@@ -382,7 +391,7 @@ function Auth() {
 }
 
 // ---------- Acciones rápidas: llamar / email / plantilla ----------
-function AccionesContacto({ emp, yo }) {
+function AccionesContacto({ emp, yo, onEmail }) {
   const [copiada, setCopiada] = useState(null) // null | 'ok' | 'error'
   if (!emp.telefono && !emp.email) return null
   const tel = String(emp.telefono || '').replace(/\s/g, '')
@@ -391,6 +400,8 @@ function AccionesContacto({ emp, yo }) {
     copiarPlantilla(emp, yo).then((ok) => {
       setCopiada(ok ? 'ok' : 'error')
       setTimeout(() => setCopiada(null), 8000)
+      // Al enviar el correo se marca la empresa y se cierra la ficha
+      onEmail?.(ok ? 'plantilla' : 'plantilla_error')
     })
   }
   return (
@@ -405,6 +416,7 @@ function AccionesContacto({ emp, yo }) {
         {emp.email && (
           <>
             <a href={gmailUrl(emp.email)} target="_blank" rel="noopener noreferrer"
+              onClick={() => onEmail?.('email')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
               <Mail className="w-3.5 h-3.5" />Email
             </a>
@@ -430,9 +442,10 @@ function AccionesContacto({ emp, yo }) {
 // ---------- Modal de empresa ----------
 function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDeleted, onClose }) {
   const nueva = !empresa
-  const [f, setF] = useState(
+  const [fForm, setF] = useState(
     empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', direccion: '', responsable: null, estado: 'sin_contactar', notas: '', proximo_contacto: null }
   )
+  const f = fForm
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -455,7 +468,8 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   // responsable siguen siendo solo de admin.
   const camposEditables = isAdmin || nueva
 
-  const guardar = async () => {
+  const guardar = async (cambios = {}, mensaje) => {
+    const f = { ...fForm, ...cambios }
     if (camposEditables && !f.nombre.trim()) { setErr('La empresa necesita un nombre.'); return }
     setBusy(true); setErr('')
     try {
@@ -475,7 +489,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
       }
-      onSaved()
+      onSaved(mensaje)
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -494,6 +508,20 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     onDeleted()
   }
 
+  // Al pulsar «Email» o «Plantilla de contacto» en una empresa existente: se guarda la ficha,
+  // si estaba sin contactar / sin respuesta pasa a «Mail enviado» (cuenta como contacto) y se cierra.
+  const alEnviarCorreo = (tipo) => {
+    if (nueva) return
+    const pasa = ['sin_contactar', 'no_contesta'].includes(f.estado)
+    const cambios = pasa ? { estado: 'mail_enviado' } : {}
+    const msg = tipo === 'plantilla'
+      ? 'Plantilla copiada: pégala en Gmail con Ctrl+V' + (pasa ? ' · marcada como Mail enviado' : '')
+      : tipo === 'plantilla_error'
+        ? 'No se pudo copiar la plantilla: escríbela a mano en Gmail' + (pasa ? ' · marcada como Mail enviado' : '')
+        : (pasa ? 'Marcada como Mail enviado ✓' : 'Guardado ✓')
+    guardar(cambios, msg)
+  }
+
   const camposContacto = (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -506,7 +534,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}`} target="_blank" rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-blue-700 hover:underline"><MapPin className="w-3.5 h-3.5" />Ver en el mapa</a>
       )}
-      <AccionesContacto emp={f} yo={me.nombre} />
+      <AccionesContacto emp={f} yo={me.nombre} onEmail={alEnviarCorreo} />
     </>
   )
 
@@ -640,7 +668,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
             {isAdmin && !nueva ? (
               <Btn variant="danger" onClick={eliminar}><Trash2 className="w-4 h-4" />Eliminar</Btn>
             ) : <span />}
-            <Btn onClick={guardar} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
+            <Btn onClick={() => guardar()} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
           </div>
         </div>
       </div>
@@ -1203,6 +1231,7 @@ export default function App() {
   const [tab, setTab] = useState('empresas')
   const [busca, setBusca] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [grupo, setGrupo] = useState('activo')
   const [filtroPersona, setFiltroPersona] = useState('')
   const [agenda, setAgenda] = useState('') // '' | 'hoy' | 'atrasadas'
   const [modal, setModal] = useState(null) // null | 'nueva' | empresa
@@ -1227,7 +1256,7 @@ export default function App() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  const flash = (m) => { setAviso(m); setTimeout(() => setAviso(''), 2500) }
+  const flash = (m, ms = 2500) => { setAviso(m); setTimeout(() => setAviso(''), ms) }
 
   if (session === undefined) {
     return <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-400 text-sm">Cargando…</div>
@@ -1251,6 +1280,8 @@ export default function App() {
       if (agenda === 'atrasadas') return c.proximo_contacto && c.proximo_contacto < hoy
       return true
     })
+    // Con «Para hoy» / «Atrasadas» activo se ven todas las que tocan, sea cual sea el apartado
+    .filter((c) => { const g = grupoDe(grupo); return agenda || !g.estados || g.estados.includes(c.estado) })
     .filter((c) => !filtroEstado || c.estado === filtroEstado)
     .filter((c) => !filtroPersona || c.responsable === filtroPersona)
     .filter((c) => {
@@ -1349,29 +1380,54 @@ export default function App() {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-2 mb-5">
-              <button
-                onClick={() => setFiltroEstado('')}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border ${!filtroEstado ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
-              >
-                Todas · {companies.length}
-              </button>
-              {ESTADOS.map((e) => {
-                const n = companies.filter((c) => c.estado === e.id).length
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-white border border-slate-200 rounded-xl p-1 mb-3">
+              {GRUPOS.map((g) => {
+                const n = g.estados ? companies.filter((c) => g.estados.includes(c.estado)).length : companies.length
                 return (
                   <button
-                    key={e.id}
-                    onClick={() => setFiltroEstado(filtroEstado === e.id ? '' : e.id)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                      filtroEstado === e.id ? `${e.color} ring-2 ring-blue-500 ring-offset-1` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                    key={g.id}
+                    onClick={() => { setGrupo(g.id); setFiltroEstado('') }}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      grupo === g.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${e.dot}`} />
-                    {e.label} · {n}
+                    {g.label} <span className={grupo === g.id ? 'text-slate-300' : 'text-slate-400'}>· {n}</span>
                   </button>
                 )
               })}
             </div>
+
+            {(() => {
+              const g = grupoDe(grupo)
+              const chips = ESTADOS.filter((e) => !g.estados || g.estados.includes(e.id))
+              if (chips.length < 2) return <div className="mb-2" />
+              const total = g.estados ? companies.filter((c) => g.estados.includes(c.estado)).length : companies.length
+              return (
+                <div className="flex flex-wrap gap-2 mb-5">
+                  <button
+                    onClick={() => setFiltroEstado('')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${!filtroEstado ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                  >
+                    Todas · {total}
+                  </button>
+                  {chips.map((e) => {
+                    const n = companies.filter((c) => c.estado === e.id).length
+                    return (
+                      <button
+                        key={e.id}
+                        onClick={() => setFiltroEstado(filtroEstado === e.id ? '' : e.id)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                          filtroEstado === e.id ? `${e.color} ring-2 ring-blue-500 ring-offset-1` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${e.dot}`} />
+                        {e.label} · {n}
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })()}
 
             <div className="flex gap-2 mb-4">
               <div className="relative flex-1">
@@ -1455,7 +1511,7 @@ export default function App() {
           isAdmin={isAdmin}
           me={me}
           todas={companies}
-          onSaved={() => { setModal(null); cargar(); flash('Guardado ✓') }}
+          onSaved={(m) => { setModal(null); cargar(); flash(m || 'Guardado ✓', m ? 6000 : 2500) }}
           onDeleted={() => { setModal(null); cargar(); flash('Empresa eliminada') }}
           onClose={() => setModal(null)}
         />
