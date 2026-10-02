@@ -1373,18 +1373,21 @@ function exportarEmpresas(lista, nombreDe) {
 }
 
 // ---------- App ----------
-// Logo de la cabecera: usa public/logo-iaeste.png si existe; si no, un icono de reserva.
-// Va en blanco sobre el azul (brightness-0 invert), así que vale un logo de cualquier color.
+// Logo de la cabecera: public/logo-iaeste.png (logotipo blanco de IAESTE con el texto incluido).
+// Si no se encuentra el archivo, se muestra un icono y el texto «IAESTE» de reserva.
 function LogoIaeste() {
   const [falla, setFalla] = useState(false)
   if (falla) {
     return (
-      <div className="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center shrink-0">
-        <Building2 className="w-4 h-4 text-white" />
-      </div>
+      <>
+        <div className="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center shrink-0">
+          <Building2 className="w-4 h-4 text-white" />
+        </div>
+        <span className="text-base sm:text-lg tracking-[0.12em] font-light">IAESTE</span>
+      </>
     )
   }
-  return <img src="/logo-iaeste.png" alt="IAESTE" onError={() => setFalla(true)} className="h-9 w-9 object-contain shrink-0 brightness-0 invert" />
+  return <img src="/logo-iaeste.png" alt="IAESTE" onError={() => setFalla(true)} className="h-8 sm:h-9 w-auto shrink-0 select-none" draggable={false} />
 }
 
 export default function App() {
@@ -1463,7 +1466,6 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <LogoIaeste />
-            <span className="text-base sm:text-lg tracking-[0.12em] font-light">IAESTE</span>
             <span className="hidden sm:inline text-sm text-white/60 font-medium border-l border-white/20 pl-2.5">Madrid · CRM</span>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-3">
