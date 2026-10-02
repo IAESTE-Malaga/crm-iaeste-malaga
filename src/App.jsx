@@ -29,12 +29,13 @@ const GRUPOS = [
 ]
 const enGrupo = (g, c) => (g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado)))
 // Texto «2023 (3 prácticas) y 2024 (1 práctica)» a partir de las filas de la tabla practicas
+// (año o número pueden venir vacíos en las históricas importadas del Excel)
 const textoPracticas = (lista = []) => {
-  const partes = [...lista].sort((a, b) => a.anio - b.anio)
-    .map((p) => `${p.anio} (${p.num_practicas} práctica${p.num_practicas !== 1 ? 's' : ''})`)
+  const partes = [...lista].sort((a, b) => (a.anio || 0) - (b.anio || 0))
+    .map((p) => `${p.anio || 'un año sin registrar'}${p.num_practicas ? ` (${p.num_practicas} práctica${p.num_practicas !== 1 ? 's' : ''})` : ''}`)
   return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : (partes[0] || '')
 }
-const aniosPracticas = (lista = []) => [...new Set(lista.map((p) => p.anio))].sort().join(', ')
+const aniosPracticas = (lista = []) => [...new Set(lista.map((p) => p.anio).filter(Boolean))].sort().join(', ')
 const grupoDe = (id) => GRUPOS.find((g) => g.id === id) || GRUPOS[GRUPOS.length - 1]
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 
@@ -552,10 +553,10 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     : null
 
   const borrarPracticas = async (p) => {
-    if (!confirm(`¿Quitar las prácticas de ${p.anio}? Si no le quedan otras, dejará de ser histórica.`)) return
+    if (!confirm(`¿Quitar las prácticas de ${p.anio || 'año sin registrar'}? Si no le quedan otras, dejará de ser histórica.`)) return
     const { error } = await supabase.from('practicas').delete().eq('id', p.id)
     if (error) { setErr(error.message); return }
-    onSaved(`Prácticas ${p.anio} eliminadas`)
+    onSaved('Registro de prácticas eliminado')
   }
 
   const eliminar = async () => {
@@ -629,11 +630,14 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 <Star className="w-4 h-4 mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
                 <span><strong>Empresa histórica:</strong> nos firmó prácticas en {textoPracticas(practicas)}.</span>
               </p>
+              {practicas.filter((p) => p.notas).map((p) => (
+                <p key={`n${p.id}`} className="text-xs text-amber-800 mt-1 pl-6">{p.notas}</p>
+              ))}
               {isAdmin && (
                 <div className="flex flex-wrap gap-1.5 mt-2 pl-6">
                   {practicas.map((p) => (
                     <span key={p.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-amber-200 text-xs">
-                      {p.anio} · {p.num_practicas}
+                      {p.anio || '¿año?'}{p.num_practicas ? ` · ${p.num_practicas}` : ''}
                       <button onClick={() => borrarPracticas(p)} title="Quitar este año" className="text-amber-400 hover:text-rose-600"><X className="w-3 h-3" /></button>
                     </span>
                   ))}
