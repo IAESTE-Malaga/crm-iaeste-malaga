@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, Inbox, MapPin,
+  History, UserPlus, Inbox, MapPin, Star,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -24,8 +24,17 @@ const GRUPOS = [
   { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'] },
   { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'] },
   { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'] },
+  { id: 'historicas', label: 'Históricas', estados: null, historicas: true, soloAdmin: true },
   { id: 'todas', label: 'Todas', estados: null },
 ]
+const enGrupo = (g, c) => (g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado)))
+// Texto «2023 (3 prácticas) y 2024 (1 práctica)» a partir de las filas de la tabla practicas
+const textoPracticas = (lista = []) => {
+  const partes = [...lista].sort((a, b) => a.anio - b.anio)
+    .map((p) => `${p.anio} (${p.num_practicas} práctica${p.num_practicas !== 1 ? 's' : ''})`)
+  return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}` : (partes[0] || '')
+}
+const aniosPracticas = (lista = []) => [...new Set(lista.map((p) => p.anio))].sort().join(', ')
 const grupoDe = (id) => GRUPOS.find((g) => g.id === id) || GRUPOS[GRUPOS.length - 1]
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 
@@ -459,6 +468,9 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   const [busy, setBusy] = useState(false)
   const [nuevaNota, setNuevaNota] = useState('')
   const [abrirNota, setAbrirNota] = useState(nueva)
+  const [prac, setPrac] = useState({ anio: new Date().getFullYear(), num: 1 })
+  const [addPrac, setAddPrac] = useState(false)
+  const practicas = empresa?.practicas || []
   const [hist, setHist] = useState(null) // null = cargando
 
   useEffect(() => {
@@ -489,23 +501,43 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
       return
     }
     const conNota = nota ? { notas: nota } : {}
+    // Al pasar a «Beca conseguida» (o si un admin lo pide) se registran año y nº de prácticas
+    const registrar = (f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac
+    const anio = parseInt(prac.anio, 10), num = parseInt(prac.num, 10)
+    if (registrar && (!(anio >= 1990 && anio <= 2100) || !(num > 0))) {
+      setErr('Indica el año y el número de prácticas conseguidas.')
+      return
+    }
     setBusy(true); setErr('')
     try {
+      let empresaId = f.id
       if (nueva) {
-        const { error } = await supabase.from('empresas').insert({
+        const { data: creada, error } = await supabase.from('empresas').insert({
           nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email,
           telefono: f.telefono, direccion: f.direccion,
           responsable: isAdmin ? (f.responsable || null) : me.id,
           estado: f.estado,
           notas: nota || null, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
-        })
+        }).select('id').single()
         if (error) throw error
+        empresaId = creada.id
       } else {
         const patch = isAdmin
           ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
           : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
+      }
+      if (registrar) {
+        const { error } = await supabase.from('practicas').insert({
+          empresa_id: empresaId, anio, num_practicas: num, creado_por_nombre: me.nombre,
+        })
+        if (error) {
+          throw new Error(error.code === '23505'
+            ? `La empresa se ha guardado, pero ya había prácticas registradas en ${anio}. Si hay que corregir el número, pídeselo a un admin.`
+            : `La empresa se ha guardado, pero no se han podido registrar las prácticas: ${error.message}`)
+        }
+        mensaje = mensaje || `Prácticas ${anio} registradas ✓ · ya es empresa histórica`
       }
       onSaved(mensaje)
     } catch (e) {
@@ -518,6 +550,13 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   const cifDup = nueva && (f.cif || '').trim().length > 5
     ? todas.find((c) => (c.cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase() === f.cif.replace(/[^A-Z0-9]/gi, '').toUpperCase())
     : null
+
+  const borrarPracticas = async (p) => {
+    if (!confirm(`¿Quitar las prácticas de ${p.anio}? Si no le quedan otras, dejará de ser histórica.`)) return
+    const { error } = await supabase.from('practicas').delete().eq('id', p.id)
+    if (error) { setErr(error.message); return }
+    onSaved(`Prácticas ${p.anio} eliminadas`)
+  }
 
   const eliminar = async () => {
     if (!confirm('¿Eliminar esta empresa?')) return
@@ -584,6 +623,24 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-4">
+          {practicas.length > 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="flex items-start gap-2">
+                <Star className="w-4 h-4 mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
+                <span><strong>Empresa histórica:</strong> nos firmó prácticas en {textoPracticas(practicas)}.</span>
+              </p>
+              {isAdmin && (
+                <div className="flex flex-wrap gap-1.5 mt-2 pl-6">
+                  {practicas.map((p) => (
+                    <span key={p.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-amber-200 text-xs">
+                      {p.anio} · {p.num_practicas}
+                      <button onClick={() => borrarPracticas(p)} title="Quitar este año" className="text-amber-400 hover:text-rose-600"><X className="w-3 h-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {camposEditables ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -643,6 +700,24 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               ))}
             </div>
           </div>
+          {((f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac) ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-900 mb-2">Prácticas conseguidas</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Año</Label><Input type="number" inputMode="numeric" min="1990" max="2100" value={prac.anio} onChange={(e) => setPrac((p) => ({ ...p, anio: e.target.value }))} /></div>
+                <div><Label>Nº de prácticas</Label><Input type="number" inputMode="numeric" min="1" value={prac.num} onChange={(e) => setPrac((p) => ({ ...p, num: e.target.value }))} /></div>
+              </div>
+              <p className="text-xs text-emerald-800 mt-2">Al guardar, la empresa queda registrada como histórica con este año.</p>
+              {addPrac && (
+                <button onClick={() => setAddPrac(false)} className="text-xs text-slate-500 hover:underline mt-1">Cancelar</button>
+              )}
+            </div>
+          ) : isAdmin && (
+            <button onClick={() => setAddPrac(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:underline">
+              <Star className="w-3.5 h-3.5" />{practicas.length ? 'Registrar prácticas de otro año' : 'Marcar como histórica (registrar prácticas de un año)'}
+            </button>
+          )}
           <div>
             <Label>Próximo contacto</Label>
             <div className="flex flex-wrap items-center gap-2">
@@ -1116,7 +1191,8 @@ function Equipo({ users, companies, me, onChanged }) {
   const [asignando, setAsignando] = useState('')
   const cuenta = (id) => companies.filter((c) => c.responsable === id).length
   const sinContactar = (id) => companies.filter((c) => c.responsable === id && c.estado === 'sin_contactar').length
-  const libres = companies.filter((c) => !c.responsable && c.estado === 'sin_contactar')
+  // Las históricas no entran en los lotes: solo se asignan a mano desde la ficha
+  const libres = companies.filter((c) => !c.responsable && c.estado === 'sin_contactar' && !c.historica)
 
   const asignarLote = async (u) => {
     setErr(''); setAsignando(u.id)
@@ -1156,7 +1232,7 @@ function Equipo({ users, companies, me, onChanged }) {
       <Actividad users={users} companies={companies} />
 
       <p className="text-xs text-slate-500 px-1">
-        Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar».
+        Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar» (sin contar las históricas, que se asignan a mano desde su ficha).
         El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona.
       </p>
 
@@ -1274,9 +1350,9 @@ function MiQuincena({ me, companies, onAbrir }) {
 
 // ---------- Exportar empresas a CSV (se abre en Excel) ----------
 function exportarEmpresas(lista, nombreDe) {
-  const cab = ['Empresa', 'CIF', 'Sector', 'Contacto', 'Telefono', 'Email', 'Direccion', 'Estado', 'Responsable', 'Proximo contacto', 'Notas']
+  const cab = ['Empresa', 'CIF', 'Sector', 'Contacto', 'Telefono', 'Email', 'Direccion', 'Practicas', 'Estado', 'Responsable', 'Proximo contacto', 'Notas']
   const filas = lista.map((c) => [
-    c.nombre, c.cif || '', c.sector || '', c.contacto || '', c.telefono || '', c.email || '', c.direccion || '',
+    c.nombre, c.cif || '', c.sector || '', c.contacto || '', c.telefono || '', c.email || '', c.direccion || '', textoPracticas(c.practicas),
     estadoDe(c.estado).label, nombreDe(c.responsable), c.proximo_contacto || '',
     (c.notas || '').replace(/\n/g, ' | '),
   ])
@@ -1293,6 +1369,20 @@ function exportarEmpresas(lista, nombreDe) {
 }
 
 // ---------- App ----------
+// Logo de la cabecera: usa public/logo-iaeste.png si existe; si no, un icono de reserva.
+// Va en blanco sobre el azul (brightness-0 invert), así que vale un logo de cualquier color.
+function LogoIaeste() {
+  const [falla, setFalla] = useState(false)
+  if (falla) {
+    return (
+      <div className="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center shrink-0">
+        <Building2 className="w-4 h-4 text-white" />
+      </div>
+    )
+  }
+  return <img src="/logo-iaeste.png" alt="IAESTE" onError={() => setFalla(true)} className="h-9 w-9 object-contain shrink-0 brightness-0 invert" />
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = cargando
   const [me, setMe] = useState(null)
@@ -1315,12 +1405,16 @@ export default function App() {
 
   const cargar = useCallback(async () => {
     if (!session) return
-    const [{ data: perfiles }, { data: emps }] = await Promise.all([
+    const [{ data: perfiles }, { data: emps }, { data: pracs }] = await Promise.all([
       supabase.from('profiles').select('*').order('nombre'),
       supabase.from('empresas').select('*').order('nombre'),
+      // Si la tabla practicas aún no existe, esto devuelve error y simplemente no hay históricas
+      supabase.from('practicas').select('*').order('anio'),
     ])
+    const porEmpresa = {}
+    for (const p of pracs || []) (porEmpresa[p.empresa_id] ||= []).push(p)
     setUsers(perfiles || [])
-    setCompanies(emps || [])
+    setCompanies((emps || []).map((c) => ({ ...c, practicas: porEmpresa[c.id] || [] })))
     setMe((perfiles || []).find((p) => p.id === session.user.id) || null)
   }, [session])
 
@@ -1351,7 +1445,7 @@ export default function App() {
       return true
     })
     // Con «Para hoy» / «Atrasadas» activo se ven todas las que tocan, sea cual sea el apartado
-    .filter((c) => { const g = grupoDe(grupo); return agenda || !g.estados || g.estados.includes(c.estado) })
+    .filter((c) => agenda || enGrupo(grupoDe(grupo), c))
     .filter((c) => !filtroEstado || c.estado === filtroEstado)
     .filter((c) => !filtroPersona || c.responsable === filtroPersona)
     .filter((c) => {
@@ -1364,9 +1458,7 @@ export default function App() {
       <header className="bg-[#0d2b45] text-white sticky top-0 z-40 shadow-[0_2px_12px_rgba(13,43,69,0.25)]">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center shrink-0">
-              <Building2 className="w-4 h-4 text-white" />
-            </div>
+            <LogoIaeste />
             <span className="text-base sm:text-lg tracking-[0.12em] font-light">IAESTE</span>
             <span className="hidden sm:inline text-sm text-white/60 font-medium border-l border-white/20 pl-2.5">Madrid · CRM</span>
           </div>
@@ -1454,9 +1546,9 @@ export default function App() {
               </div>
             )}
 
-            <div className="flex sm:grid sm:grid-cols-4 gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]">
-              {GRUPOS.map((g) => {
-                const n = g.estados ? companies.filter((c) => g.estados.includes(c.estado)).length : companies.length
+            <div className={`flex sm:grid ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]`}>
+              {GRUPOS.filter((g) => !g.soloAdmin || isAdmin).map((g) => {
+                const n = companies.filter((c) => enGrupo(g, c)).length
                 return (
                   <button
                     key={g.id}
@@ -1473,9 +1565,10 @@ export default function App() {
 
             {(() => {
               const g = grupoDe(grupo)
-              const chips = ESTADOS.filter((e) => !g.estados || g.estados.includes(e.id))
+              const delGrupo = companies.filter((c) => enGrupo(g, c))
+              const chips = ESTADOS.filter((e) => (g.historicas ? delGrupo.some((c) => c.estado === e.id) : (!g.estados || g.estados.includes(e.id))))
               if (chips.length < 2) return <div className="mb-2" />
-              const total = g.estados ? companies.filter((c) => g.estados.includes(c.estado)).length : companies.length
+              const total = delGrupo.length
               return (
                 <div className="flex flex-wrap gap-2 mb-5">
                   <button
@@ -1485,7 +1578,7 @@ export default function App() {
                     Todas · {total}
                   </button>
                   {chips.map((e) => {
-                    const n = companies.filter((c) => c.estado === e.id).length
+                    const n = delGrupo.filter((c) => c.estado === e.id).length
                     return (
                       <button
                         key={e.id}
@@ -1544,10 +1637,20 @@ export default function App() {
                   <button
                     key={c.id}
                     onClick={() => setModal(c)}
-                    className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 text-left transition-colors"
+                    className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${
+                      c.historica ? 'bg-amber-50/70 hover:bg-amber-50 border-l-4 border-l-amber-500 pl-4' : 'hover:bg-slate-50'
+                    }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 truncate">{c.nombre}</p>
+                      <p className="font-medium text-slate-900 truncate flex items-center gap-2">
+                        <span className="truncate">{c.nombre}</span>
+                        {c.historica && (
+                          <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold"
+                            title={`Nos dio prácticas en ${textoPracticas(c.practicas)}`}>
+                            <Star className="w-3 h-3 fill-amber-500 text-amber-500" />Histórica{c.practicas?.length ? ` · ${aniosPracticas(c.practicas)}` : ''}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-slate-500 truncate">
                         {[c.cif, c.sector, c.contacto].filter(Boolean).join(' · ') || '—'}
                       </p>
