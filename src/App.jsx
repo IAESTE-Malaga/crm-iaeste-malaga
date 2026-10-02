@@ -290,7 +290,7 @@ const Badge = ({ estadoId }) => {
 const Input = (props) => (
   <input
     {...props}
-    className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 ${props.className || ''}`}
+    className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30 focus:border-[#0e2d4d] ${props.className || ''}`}
   />
 )
 
@@ -300,14 +300,14 @@ const Label = ({ children }) => (
 
 const Btn = ({ children, variant = 'primary', ...props }) => {
   const styles = {
-    primary: 'bg-blue-700 hover:bg-blue-800 text-white',
+    primary: 'bg-[#0e2d4d] hover:bg-[#163d63] text-white shadow-sm',
     ghost: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300',
     danger: 'bg-white hover:bg-rose-50 text-rose-600 border border-rose-200',
   }
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${styles[variant]} ${props.className || ''}`}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-colors disabled:opacity-50 ${styles[variant]} ${props.className || ''}`}
     >
       {children}
     </button>
@@ -353,8 +353,8 @@ function Auth() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+    <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-blue-700 flex items-center justify-center">
             <Building2 className="w-5 h-5 text-white" />
@@ -604,7 +604,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                   <select
                     value={f.responsable || ''}
                     onChange={(e) => set('responsable', e.target.value || null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30"
                   >
                     <option value="">Sin asignar</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
@@ -635,7 +635,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                   key={e.id}
                   onClick={() => set('estado', e.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    f.estado === e.id ? `${e.color} ring-2 ring-offset-1 ring-blue-500` : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                    f.estado === e.id ? `${e.color} ring-2 ring-offset-1 ring-[#0e2d4d]` : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   {e.label}
@@ -650,7 +650,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 type="date"
                 value={f.proximo_contacto || ''}
                 onChange={(e) => set('proximo_contacto', e.target.value || null)}
-                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30"
               />
               {[['+1 sem', 7], ['+2 sem', 14], ['+1 mes', 30]].map(([t, n]) => (
                 <button key={t} onClick={() => set('proximo_contacto', sumarDias(n))}
@@ -688,7 +688,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                   rows={3}
                   maxLength={500}
                   placeholder="Llamada del 3/7: interesados, enviar propuesta…"
-                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none ${
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30 resize-none ${
                     estadoCambiado && !nuevaNota.trim() ? 'border-rose-300' : 'border-slate-300'
                   }`}
                 />
@@ -821,7 +821,7 @@ function GraficaEmpresas({ users, companies }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-6">
       <div className="flex items-baseline justify-between mb-5 gap-3 flex-wrap">
         <h3 className="font-bold text-slate-900">Empresas por persona</h3>
         <div className="flex items-center gap-2">
@@ -987,7 +987,7 @@ function Actividad({ users, companies }) {
   )
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-6">
       <div className="flex items-baseline justify-between mb-4 gap-3 flex-wrap">
         <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
           <Trophy className="w-4 h-4 text-slate-400" />Puntos del equipo
@@ -1160,7 +1160,7 @@ function Equipo({ users, companies, me, onChanged }) {
         El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona.
       </p>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden">
         {users.map((u) => (
           <div key={u.id} className="flex items-center justify-between px-6 py-4 border-b border-slate-100 last:border-0">
             <div className="flex items-center gap-3">
@@ -1329,11 +1329,11 @@ export default function App() {
   const flash = (m, ms = 2500) => { setAviso(m); setTimeout(() => setAviso(''), ms) }
 
   if (session === undefined) {
-    return <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-400 text-sm">Cargando…</div>
+    return <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center text-slate-400 text-sm">Cargando…</div>
   }
   if (!session) return <Auth />
   if (!me) {
-    return <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-400 text-sm">Preparando tu perfil…</div>
+    return <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center text-slate-400 text-sm">Preparando tu perfil…</div>
   }
 
   const isAdmin = me.rol === 'admin'
@@ -1360,38 +1360,42 @@ export default function App() {
     })
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-700 flex items-center justify-center">
+    <div className="min-h-screen bg-[#f4f6fa]">
+      <header className="bg-[#0d2b45] text-white sticky top-0 z-40 shadow-[0_2px_12px_rgba(13,43,69,0.25)]">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full border border-white/40 flex items-center justify-center shrink-0">
               <Building2 className="w-4 h-4 text-white" />
             </div>
-            <span className="font-bold text-slate-900">CRM IAESTE</span>
+            <span className="text-base sm:text-lg tracking-[0.12em] font-light">IAESTE</span>
+            <span className="hidden sm:inline text-sm text-white/60 font-medium border-l border-white/20 pl-2.5">Madrid · CRM</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {isAdmin && (
-              <nav className="flex bg-slate-100 rounded-lg p-0.5">
+              <nav className="flex gap-0.5 sm:gap-1">
                 {[['empresas', 'Empresas'], ['equipo', 'Equipo']].map(([id, label]) => (
                   <button
                     key={id}
                     onClick={() => setTab(id)}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium ${tab === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-colors ${tab === id ? 'bg-white text-[#0e2d4d]' : 'text-white/80 hover:text-[#e2e8f0] hover:bg-white/[0.08]'}`}
                   >
                     {label}
                   </button>
                 ))}
               </nav>
             )}
-            <div className="flex items-center gap-2 text-sm text-slate-600">
+            <div className="flex items-center gap-2 text-sm text-white/80">
               <span className="hidden sm:flex items-center gap-1.5">
-                {isAdmin && <Shield className="w-3.5 h-3.5 text-blue-600" />}
+                {isAdmin && <Shield className="w-3.5 h-3.5 text-white/70" />}
                 {me.nombre}
               </span>
+              <div className="hidden sm:flex w-8 h-8 rounded-full bg-white text-[#0d2b45] font-bold text-sm items-center justify-center" title={me.nombre}>
+                {(me.nombre || '?').trim().charAt(0).toUpperCase()}
+              </div>
               <button
                 onClick={() => supabase.auth.signOut()}
                 title="Salir"
-                className="p-2 rounded-lg hover:bg-slate-100 text-slate-400"
+                className="p-2 rounded-full hover:bg-white/[0.08] text-white/70 hover:text-white"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -1450,18 +1454,18 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-white border border-slate-200 rounded-xl p-1 mb-3">
+            <div className="flex sm:grid sm:grid-cols-4 gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]">
               {GRUPOS.map((g) => {
                 const n = g.estados ? companies.filter((c) => g.estados.includes(c.estado)).length : companies.length
                 return (
                   <button
                     key={g.id}
                     onClick={() => { setGrupo(g.id); setFiltroEstado('') }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      grupo === g.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'
+                    className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-full text-sm transition-colors ${
+                      grupo === g.id ? 'bg-white text-[#0e2d4d] font-bold shadow-sm' : 'text-white/85 font-medium hover:bg-white/[0.08]'
                     }`}
                   >
-                    {g.label} <span className={grupo === g.id ? 'text-slate-300' : 'text-slate-400'}>· {n}</span>
+                    {g.label} <span className={grupo === g.id ? 'text-[#0e2d4d]/50' : 'text-white/50'}>· {n}</span>
                   </button>
                 )
               })}
@@ -1476,7 +1480,7 @@ export default function App() {
                 <div className="flex flex-wrap gap-2 mb-5">
                   <button
                     onClick={() => setFiltroEstado('')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${!filtroEstado ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'}`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${!filtroEstado ? 'bg-[#0e2d4d] text-white border-[#0e2d4d]' : 'bg-white text-slate-600 border-slate-200'}`}
                   >
                     Todas · {total}
                   </button>
@@ -1487,7 +1491,7 @@ export default function App() {
                         key={e.id}
                         onClick={() => setFiltroEstado(filtroEstado === e.id ? '' : e.id)}
                         className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                          filtroEstado === e.id ? `${e.color} ring-2 ring-blue-500 ring-offset-1` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                          filtroEstado === e.id ? `${e.color} ring-2 ring-[#0e2d4d] ring-offset-1` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
                         }`}
                       >
                         <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${e.dot}`} />
@@ -1499,8 +1503,8 @@ export default function App() {
               )
             })()}
 
-            <div className="flex gap-2 mb-4">
-              <div className="relative flex-1">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-4">
+              <div className="relative flex-1 basis-full sm:basis-auto">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, CIF, contacto o sector…" className="pl-9" />
               </div>
@@ -1527,7 +1531,7 @@ export default function App() {
             </div>
 
             {visibles.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-sm">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-12 text-center text-slate-400 text-sm">
                 {companies.length === 0
                   ? isAdmin
                     ? 'Todavía no hay empresas. Añade la primera con el botón «Empresa».'
@@ -1535,7 +1539,7 @@ export default function App() {
                   : 'Ninguna empresa coincide con el filtro.'}
               </div>
             ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden divide-y divide-slate-100">
                 {visibles.map((c) => (
                   <button
                     key={c.id}
@@ -1588,7 +1592,7 @@ export default function App() {
       )}
 
       {aviso && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg z-50">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#0d2b45] text-white text-sm px-4 py-2 rounded-full shadow-lg z-50">
           {aviso}
         </div>
       )}
