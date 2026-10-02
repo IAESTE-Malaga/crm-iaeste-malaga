@@ -1533,7 +1533,10 @@ export default function App() {
   const [busca, setBusca] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [grupo, setGrupo] = useState('activo')
-  const [filtroPersona, setFiltroPersona] = useState('')
+  const [filtroPersona, setFiltroPersona] = useState('') // '' | '__sin' | id de usuario
+  const [selec, setSelec] = useState([])                   // empresas marcadas para asignar (admin)
+  const [asignarA, setAsignarA] = useState('')
+  const [asignando, setAsignando] = useState(false)
   const [agenda, setAgenda] = useState('') // '' | 'hoy' | 'atrasadas'
   const [modal, setModal] = useState(null) // null | 'nueva' | empresa
   const [aviso, setAviso] = useState('')
@@ -1563,6 +1566,22 @@ export default function App() {
 
   const flash = (m, ms = 2500) => { setAviso(m); setTimeout(() => setAviso(''), ms) }
 
+  // Asignación rápida (admin): filtra «Sin asignar», marca empresas y asígnalas de golpe
+  const marcar = (id) => setSelec((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+  const asignarSeleccion = async () => {
+    if (!selec.length || !asignarA) return
+    setAsignando(true)
+    const quien = users.find((u) => u.id === asignarA)?.nombre || ''
+    const { error } = await supabase.from('empresas')
+      .update({ responsable: asignarA, actualizado_por: me?.nombre })
+      .in('id', selec)
+    setAsignando(false)
+    if (error) { flash(`No se ha podido asignar: ${error.message}`, 6000); return }
+    flash(`${selec.length} empresa${selec.length !== 1 ? 's' : ''} asignada${selec.length !== 1 ? 's' : ''} a ${quien} ✓`, 4000)
+    setSelec([])
+    cargar()
+  }
+
   if (session === undefined) {
     return <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center text-slate-400 text-sm">Cargando…</div>
   }
@@ -1584,6 +1603,7 @@ export default function App() {
   // Los miembros ven Disponibles / Seguimiento / Cerradas (solo las suyas) y Todas (todas, en solo lectura)
   const gruposVisibles = GRUPOS.filter((g) => isAdmin || !g.soloAdmin)
   const grupoEf = gruposVisibles.some((g) => g.id === grupo) ? grupo : gruposVisibles[0].id
+  const modoAsignar = isAdmin && filtroPersona === '__sin'
   const visibles = companies
     .filter((c) => {
       if (agenda && !isAdmin && c.responsable !== me.id) return false
@@ -1594,7 +1614,7 @@ export default function App() {
     // Con «Para hoy» / «Atrasadas» activo se ven todas las que tocan, sea cual sea el apartado
     .filter((c) => agenda || enGrupo(grupoDe(grupoEf), c, me.id, isAdmin))
     .filter((c) => !filtroEstado || c.estado === filtroEstado)
-    .filter((c) => !filtroPersona || c.responsable === filtroPersona)
+    .filter((c) => !filtroPersona || (filtroPersona === '__sin' ? !c.responsable : c.responsable === filtroPersona))
     .filter((c) => {
       const q = busca.toLowerCase()
       if (!q) return true
@@ -1758,10 +1778,11 @@ export default function App() {
                 <>
                   <select
                     value={filtroPersona}
-                    onChange={(e) => setFiltroPersona(e.target.value)}
+                    onChange={(e) => { setFiltroPersona(e.target.value); setSelec([]) }}
                     className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
                   >
                     <option value="">Todo el equipo</option>
+                    <option value="__sin">Sin asignar ({companies.filter((c) => !c.responsable).length})</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
                   <button
@@ -1785,10 +1806,37 @@ export default function App() {
                   : 'Ninguna empresa coincide con el filtro.'}
               </div>
             ) : (
+              <>
+              {modoAsignar && (
+                <div className="sticky top-16 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#0e2d4d] text-white px-4 py-3 shadow-[0_4px_16px_rgba(13,43,69,0.25)]">
+                  <span className="text-sm font-semibold">{selec.length} seleccionada{selec.length !== 1 ? 's' : ''}</span>
+                  <button onClick={() => setSelec(visibles.slice(0, LOTE).map((c) => c.id))}
+                    className="px-2.5 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20">Marcar {LOTE} primeras</button>
+                  {selec.length > 0 && (
+                    <button onClick={() => setSelec([])} className="px-2.5 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20">Quitar marcas</button>
+                  )}
+                  <span className="flex-1" />
+                  <select value={asignarA} onChange={(e) => setAsignarA(e.target.value)}
+                    className="px-3 py-1.5 rounded-full text-sm text-slate-900 bg-white">
+                    <option value="">Asignar a…</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                  <button onClick={asignarSeleccion} disabled={!selec.length || !asignarA || asignando}
+                    className="px-4 py-1.5 rounded-full text-sm font-bold bg-white text-[#0e2d4d] disabled:opacity-40">
+                    {asignando ? 'Asignando…' : 'Asignar'}
+                  </button>
+                </div>
+              )}
               <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden divide-y divide-slate-100">
                 {visibles.map((c) => (
+                  <div key={c.id} className={`flex items-stretch ${selec.includes(c.id) ? 'bg-blue-50/70' : ''}`}>
+                  {modoAsignar && (
+                    <label className="flex items-center pl-4 pr-1 cursor-pointer">
+                      <input type="checkbox" checked={selec.includes(c.id)} onChange={() => marcar(c.id)}
+                        className="w-4 h-4 accent-[#0e2d4d]" />
+                    </label>
+                  )}
                   <button
-                    key={c.id}
                     onClick={() => setModal(c)}
                     className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${
                       c.historica ? 'bg-amber-50/70 hover:bg-amber-50 border-l-4 border-l-amber-500 pl-4' : 'hover:bg-slate-50'
@@ -1825,8 +1873,10 @@ export default function App() {
                     <Badge estadoId={c.estado} />
                     <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
                   </button>
+                  </div>
                 ))}
               </div>
+              </>
             )}
           </>
         )}
