@@ -60,8 +60,16 @@ const PUNTOS = {
   },
   quincena: 10,       // seguimiento quincenal cumplido (ver QUINCENA)
 }
+// Un seguimiento con cambio de estado deja dos filas en el historial (estado + nota) con la misma
+// hora, persona y empresa. Se marca la nota para que ese seguimiento puntúe una sola vez.
+const claveSeg = (h) => `${h.empresa_id}|${h.usuario_id}|${h.creado}`
+function marcarNotasConEstado(rows) {
+  const conEstado = new Set(rows.filter((h) => h.accion === 'estado').map(claveSeg))
+  return rows.map((h) => (h.accion === 'nota' && conEstado.has(claveSeg(h)) ? { ...h, conEstado: true } : h))
+}
 const puntosDe = (h) =>
-  h.accion === 'estado'
+  h.accion === 'nota' && h.conEstado ? 0
+  : h.accion === 'estado'
     ? (PUNTOS.estado[h.estado_nuevo] ?? PUNTOS.estado._)
     : h.accion === 'quincena'
       ? (h.cumple ? PUNTOS.quincena : 0)
@@ -449,6 +457,8 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [nuevaNota, setNuevaNota] = useState('')
+  const [abrirNota, setAbrirNota] = useState(nueva)
   const [hist, setHist] = useState(null) // null = cargando
 
   useEffect(() => {
@@ -468,9 +478,17 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   // responsable siguen siendo solo de admin.
   const camposEditables = isAdmin || nueva
 
-  const guardar = async (cambios = {}, mensaje) => {
+  const guardar = async (cambios = {}, mensaje, notaAuto = '') => {
     const f = { ...fForm, ...cambios }
     if (camposEditables && !f.nombre.trim()) { setErr('La empresa necesita un nombre.'); return }
+    // Cada seguimiento es una nota nueva; cambiar de estado obliga a escribirla
+    const nota = (nuevaNota.trim() || notaAuto).slice(0, 500)
+    if (!nueva && f.estado !== empresa.estado && !nota) {
+      setAbrirNota(true)
+      setErr('Para cambiar el estado añade una nota de seguimiento contando qué ha pasado.')
+      return
+    }
+    const conNota = nota ? { notas: nota } : {}
     setBusy(true); setErr('')
     try {
       if (nueva) {
@@ -479,13 +497,13 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
           telefono: f.telefono, direccion: f.direccion,
           responsable: isAdmin ? (f.responsable || null) : me.id,
           estado: f.estado,
-          notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
+          notas: nota || null, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
         })
         if (error) throw error
       } else {
         const patch = isAdmin
-          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
-          : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
       }
@@ -514,13 +532,33 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     if (nueva) return
     const pasa = ['sin_contactar', 'no_contesta'].includes(f.estado)
     const cambios = pasa ? { estado: 'mail_enviado' } : {}
+    const notaAuto = pasa ? (tipo === 'email' ? 'Mail enviado' : 'Mail enviado con la plantilla de contacto') : ''
     const msg = tipo === 'plantilla'
       ? 'Plantilla copiada: pégala en Gmail con Ctrl+V' + (pasa ? ' · marcada como Mail enviado' : '')
       : tipo === 'plantilla_error'
         ? 'No se pudo copiar la plantilla: escríbela a mano en Gmail' + (pasa ? ' · marcada como Mail enviado' : '')
         : (pasa ? 'Marcada como Mail enviado ✓' : 'Guardado ✓')
-    guardar(cambios, msg)
+    guardar(cambios, msg, notaAuto)
   }
+
+  // Línea de seguimientos: cada cambio de estado con su nota, cada nota suelta y el resto de movimientos
+  const seguimientos = (() => {
+    if (!hist) return null
+    const notaDe = new Map(hist.filter((h) => h.accion === 'nota').map((h) => [claveSeg(h), h]))
+    const usadas = new Set()
+    const out = []
+    for (const h of hist) {
+      if (h.accion === 'estado') {
+        const n = notaDe.get(claveSeg(h))
+        if (n) usadas.add(n.id)
+        out.push({ ...h, texto: n?.detalle || '' })
+      } else if (h.accion === 'nota') {
+        if (!usadas.has(h.id) && !hist.some((e) => e.accion === 'estado' && claveSeg(e) === claveSeg(h))) out.push({ ...h, texto: h.detalle })
+      } else out.push(h)
+    }
+    return out
+  })()
+  const estadoCambiado = !nueva && f.estado !== empresa.estado
 
   const camposContacto = (
     <>
@@ -624,42 +662,74 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               )}
             </div>
           </div>
-          <div>
-            <Label>Notas / seguimiento</Label>
-            <textarea
-              value={f.notas || ''}
-              onChange={(e) => set('notas', e.target.value)}
-              rows={4}
-              placeholder="Llamada del 3/7: interesados, enviar propuesta…"
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none"
-            />
-          </div>
-          {!nueva && (
-            <div className="pt-2 border-t border-slate-100">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                <History className="w-3.5 h-3.5" />Historial
+          <div className="pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <History className="w-3.5 h-3.5" />Seguimiento
               </p>
-              {hist === null ? (
-                <p className="text-xs text-slate-400">Cargando…</p>
-              ) : hist.length === 0 ? (
-                <p className="text-xs text-slate-400">Sin movimientos registrados todavía.</p>
-              ) : (
-                <ol className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {hist.map((h) => (
-                    <li key={h.id} className="flex gap-2 text-xs">
-                      <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe(h.accion).color}`}>
-                        {accionDe(h.accion).label}
-                      </span>
-                      <span className="flex-1 min-w-0">
-                        <span className="text-slate-700 break-words">{detalleLegible(h)}</span>
-                        <span className="block text-slate-400">{h.usuario_nombre} · {fecha(h.creado)}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+              {!abrirNota && !estadoCambiado && (
+                <button onClick={() => setAbrirNota(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                  <Plus className="w-3.5 h-3.5" />Añadir seguimiento
+                </button>
               )}
             </div>
-          )}
+            {(abrirNota || estadoCambiado) && (
+              <div className="mb-3">
+                {estadoCambiado && (
+                  <p className="text-xs text-slate-600 mb-1.5">
+                    {estadoDe(empresa.estado).label} → <strong>{estadoDe(f.estado).label}</strong>: cuenta qué ha pasado <span className="text-rose-600">(obligatorio)</span>
+                  </p>
+                )}
+                <textarea
+                  autoFocus
+                  value={nuevaNota}
+                  onChange={(e) => setNuevaNota(e.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="Llamada del 3/7: interesados, enviar propuesta…"
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none ${
+                    estadoCambiado && !nuevaNota.trim() ? 'border-rose-300' : 'border-slate-300'
+                  }`}
+                />
+                <p className="text-[11px] text-slate-400 text-right">{nuevaNota.length}/500</p>
+              </div>
+            )}
+            {nueva ? null : seguimientos === null ? (
+              <p className="text-xs text-slate-400">Cargando…</p>
+            ) : seguimientos.length === 0 ? (
+              <p className="text-xs text-slate-400">Sin seguimientos todavía.</p>
+            ) : (
+              <ol className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {seguimientos.map((h) => (h.accion === 'estado' || h.accion === 'nota') ? (
+                  <li key={h.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                      {h.accion === 'estado' && h.estado_nuevo ? (
+                        <span className={`px-1.5 py-0.5 rounded border font-medium ${estadoDe(h.estado_nuevo).color}`}>
+                          {h.estado_anterior ? `${estadoDe(h.estado_anterior).label} → ` : ''}{estadoDe(h.estado_nuevo).label}
+                        </span>
+                      ) : h.accion === 'estado' ? (
+                        <span className="px-1.5 py-0.5 rounded border font-medium bg-emerald-50 text-emerald-700 border-emerald-200">{detalleLegible(h)}</span>
+                      ) : null}
+                      <span className="text-slate-400">{h.usuario_nombre} · {fecha(h.creado)}</span>
+                    </div>
+                    {h.texto ? <p className="text-slate-700 whitespace-pre-wrap break-words">{h.texto}</p>
+                      : <p className="text-slate-400 italic">Sin nota</p>}
+                  </li>
+                ) : (
+                  <li key={h.id} className="flex gap-2 text-xs px-1">
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe(h.accion).color}`}>
+                      {accionDe(h.accion).label}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="text-slate-600 break-words">{detalleLegible(h)}</span>
+                      <span className="block text-slate-400">{h.usuario_nombre} · {fecha(h.creado)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
           {f.actualizado && !nueva && (
             <p className="text-xs text-slate-400">Última actualización: {fecha(f.actualizado)}{f.actualizado_por ? ` · ${f.actualizado_por}` : ''}</p>
           )}
@@ -854,7 +924,7 @@ function Actividad({ users, companies }) {
 
   const iniRango = new Date(desde + 'T00:00:00')
   // Lo de empresas ya eliminadas no cuenta: al borrar una empresa chorra, sus puntos desaparecen del periodo.
-  const filas = (todo || []).filter((h) => new Date(h.creado) >= iniRango && (!companies.length || idsVivos.has(h.empresa_id)))
+  const filas = marcarNotasConEstado((todo || []).filter((h) => new Date(h.creado) >= iniRango && (!companies.length || idsVivos.has(h.empresa_id))))
 
   // Quincenas cerradas cuyo último día cae dentro del rango, como filas más del desglose
   const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
@@ -879,7 +949,7 @@ function Actividad({ users, companies }) {
     const k = h.usuario_id || h.usuario_nombre
     acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
     const r = acc[k]
-    if (r[h.accion] !== undefined) r[h.accion]++
+    if (r[h.accion] !== undefined && !h.conEstado) r[h.accion]++
     if (h.accion === 'estado' && h.estado_nuevo === 'beca') r.becas++
     if (h.accion === 'quincena' && h.cumple) r.quincenas++
     r.puntos += puntosDe(h)
