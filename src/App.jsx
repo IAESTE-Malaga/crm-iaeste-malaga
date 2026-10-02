@@ -503,7 +503,8 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     if (cifDup) { setErr(`Ese CIF ya es de «${cifDup.nombre}». No se pueden repetir CIF en el CRM.`); return }
     // Cada seguimiento es una nota nueva; cambiar de estado obliga a escribirla
     const nota = (nuevaNota.trim() || notaAuto).slice(0, 500)
-    if (!nueva && f.estado !== empresa.estado && !nota) {
+    // La nota es obligatoria al cambiar de estado, salvo en el primer paso desde «Sin contactar»
+    if (!nueva && f.estado !== empresa.estado && empresa.estado !== 'sin_contactar' && !nota) {
       setAbrirNota(true)
       setErr('Para cambiar el estado añade una nota de seguimiento contando qué ha pasado.')
       return
@@ -610,6 +611,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     return out
   })()
   const estadoCambiado = !nueva && f.estado !== empresa.estado
+  const notaObligatoria = estadoCambiado && empresa.estado !== 'sin_contactar'
 
   const camposContacto = (
     <>
@@ -810,7 +812,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               <div className="mb-3">
                 {estadoCambiado && (
                   <p className="text-xs text-slate-600 mb-1.5">
-                    {estadoDe(empresa.estado).label} → <strong>{estadoDe(f.estado).label}</strong>: cuenta qué ha pasado <span className="text-rose-600">(obligatorio)</span>
+                    {estadoDe(empresa.estado).label} → <strong>{estadoDe(f.estado).label}</strong>: cuenta qué ha pasado {notaObligatoria ? <span className="text-rose-600">(obligatorio)</span> : <span className="text-slate-400">(opcional)</span>}
                   </p>
                 )}
                 <textarea
@@ -821,7 +823,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                   maxLength={500}
                   placeholder="Llamada del 3/7: interesados, enviar propuesta…"
                   className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30 resize-none ${
-                    estadoCambiado && !nuevaNota.trim() ? 'border-rose-300' : 'border-slate-300'
+                    notaObligatoria && !nuevaNota.trim() ? 'border-rose-300' : 'border-slate-300'
                   }`}
                 />
                 <p className="text-[11px] text-slate-400 text-right">{nuevaNota.length}/500</p>
