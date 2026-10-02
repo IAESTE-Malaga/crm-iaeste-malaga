@@ -21,14 +21,16 @@ const ESTADOS = [
 ]
 // Apartados de la lista de empresas: cada estado pertenece a uno
 const GRUPOS = [
-  { id: 'mias', label: 'Mis empresas', estados: null, mias: true, soloMiembro: true },
-  { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'], soloAdmin: true },
-  { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'], soloAdmin: true },
-  { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'], soloAdmin: true },
+  { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'] },
+  { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'] },
+  { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'] },
   { id: 'historicas', label: 'Históricas', estados: null, historicas: true, soloAdmin: true },
   { id: 'todas', label: 'Todas', estados: null },
 ]
-const enGrupo = (g, c, meId) => (g.mias ? c.responsable === meId : g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado)))
+// Para un miembro, todos los apartados salvo «Todas» muestran solo sus empresas
+const enGrupo = (g, c, meId, admin = true) =>
+  (!admin && g.id !== 'todas' && c.responsable !== meId) ? false
+    : g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado))
 // Normaliza un CIF para comparar: sin espacios, guiones ni puntos y en mayúsculas
 const cifNorm = (cif) => String(cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
 // Texto «2023 (3 prácticas) y 2024 (1 práctica)» a partir de las filas de la tabla practicas
@@ -644,6 +646,12 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 {empresa.responsable ? <>La lleva <strong>{nombreResp(empresa.responsable) || 'otra persona'}</strong></> : 'Sin asignar'}</span>
               <Badge estadoId={f.estado} />
             </div>
+            {empresa.historica && (
+              <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                <Star className="w-4 h-4 mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
+                <span><strong>Empresa histórica</strong>{practicas.length ? <>: nos firmó prácticas en {textoPracticas(practicas)}.</> : '.'}</span>
+              </p>
+            )}
             <div className="space-y-2">
               {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
               {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
@@ -1575,20 +1583,23 @@ export default function App() {
 
   const hoy = HOY()
   const misSinContactar = companies.filter((c) => c.responsable === me.id && c.estado === 'sin_contactar').length
-  const nAtrasadas = companies.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
-  const nHoy = companies.filter((c) => c.proximo_contacto === hoy).length
+  // Recordatorios: un miembro solo cuenta los de sus empresas
+  const deAgenda = isAdmin ? companies : companies.filter((c) => c.responsable === me.id)
+  const nAtrasadas = deAgenda.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
+  const nHoy = deAgenda.filter((c) => c.proximo_contacto === hoy).length
 
-  // Los miembros solo tienen «Mis empresas» y «Todas»; los admins, el resto de apartados
-  const gruposVisibles = GRUPOS.filter((g) => (isAdmin ? !g.soloMiembro : !g.soloAdmin))
+  // Los miembros ven Disponibles / Seguimiento / Cerradas (solo las suyas) y Todas (todas, en solo lectura)
+  const gruposVisibles = GRUPOS.filter((g) => isAdmin || !g.soloAdmin)
   const grupoEf = gruposVisibles.some((g) => g.id === grupo) ? grupo : gruposVisibles[0].id
   const visibles = companies
     .filter((c) => {
+      if (agenda && !isAdmin && c.responsable !== me.id) return false
       if (agenda === 'hoy') return c.proximo_contacto && c.proximo_contacto <= hoy
       if (agenda === 'atrasadas') return c.proximo_contacto && c.proximo_contacto < hoy
       return true
     })
     // Con «Para hoy» / «Atrasadas» activo se ven todas las que tocan, sea cual sea el apartado
-    .filter((c) => agenda || enGrupo(grupoDe(grupoEf), c, me.id))
+    .filter((c) => agenda || enGrupo(grupoDe(grupoEf), c, me.id, isAdmin))
     .filter((c) => !filtroEstado || c.estado === filtroEstado)
     .filter((c) => !filtroPersona || c.responsable === filtroPersona)
     .filter((c) => {
@@ -1693,9 +1704,9 @@ export default function App() {
               </div>
             )}
 
-            <div className={`flex sm:grid ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-2'} gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]`}>
+            <div className={`flex sm:grid ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]`}>
               {gruposVisibles.map((g) => {
-                const n = companies.filter((c) => enGrupo(g, c, me.id)).length
+                const n = companies.filter((c) => enGrupo(g, c, me.id, isAdmin)).length
                 return (
                   <button
                     key={g.id}
@@ -1714,8 +1725,8 @@ export default function App() {
               const g = grupoDe(grupoEf)
               // A los miembros no se les ponen filtros de estado en «Todas», para no saturar
               if (!isAdmin && g.id === 'todas') return <div className="mb-2" />
-              const delGrupo = companies.filter((c) => enGrupo(g, c, me.id))
-              const chips = ESTADOS.filter((e) => ((g.historicas || g.mias) ? delGrupo.some((c) => c.estado === e.id) : (!g.estados || g.estados.includes(e.id))))
+              const delGrupo = companies.filter((c) => enGrupo(g, c, me.id, isAdmin))
+              const chips = ESTADOS.filter((e) => ((g.historicas || !isAdmin) ? delGrupo.some((c) => c.estado === e.id) : (!g.estados || g.estados.includes(e.id))))
               if (chips.length < 2) return <div className="mb-2" />
               const total = delGrupo.length
               return (
