@@ -464,7 +464,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
 
   // Un miembro puede rellenar todos los campos al CREAR una empresa.
   // Al editar una existente puede tocar los datos de contacto (persona, teléfono,
-  // email, dirección), estado, notas y próximo contacto; nombre, CIF, sector y
+  // email, dirección), el CIF, estado, notas y próximo contacto; nombre, sector y
   // responsable siguen siendo solo de admin.
   const camposEditables = isAdmin || nueva
 
@@ -485,7 +485,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
       } else {
         const patch = isAdmin
           ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
-          : { contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
       }
@@ -574,18 +574,18 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 </div>
               ) : (
                 <p className="text-xs text-slate-500">
-                  Se te asignará a ti como responsable. Después podrás actualizar los datos de contacto, estado, notas y próximo contacto; para cambiar nombre, CIF o sector, pídeselo a un admin.
+                  Se te asignará a ti como responsable. Después podrás actualizar los datos de contacto, estado, notas y próximo contacto; para cambiar nombre o sector, pídeselo a un admin.
                 </p>
               )}
             </>
           ) : (
             <>
-              {(f.cif || f.sector) && (
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-1.5">
-                  {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
-                  {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
+              {f.sector && (
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700">
+                  <p><span className="text-slate-400">Sector:</span> {f.sector}</p>
                 </div>
               )}
+              <div><Label>CIF</Label><Input value={f.cif || ''} onChange={(e) => set('cif', e.target.value.toUpperCase())} placeholder="B12345678" /></div>
               {camposContacto}
             </>
           )}
