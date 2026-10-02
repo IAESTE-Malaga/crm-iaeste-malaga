@@ -12,8 +12,8 @@ const ESTADOS = [
   { id: 'no_contesta', label: 'No lo cogen', color: 'bg-cyan-50 text-cyan-700 border-cyan-200', dot: 'bg-cyan-500' },
   { id: 'mail_enviado', label: 'Mail enviado', color: 'bg-yellow-50 text-yellow-700 border-yellow-200', dot: 'bg-yellow-400' },
   { id: 'mas_adelante', label: 'Para más adelante', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', dot: 'bg-fuchsia-500' },
-  { id: 'segundo_plazo', label: 'Segundo plazo', color: 'bg-amber-100 text-amber-900 border-amber-300', dot: 'bg-amber-700' },
-  { id: 'otra_provincia', label: 'Otra provincia', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
+  { id: 'segundo_plazo', oculto: true, label: 'Segundo plazo', color: 'bg-amber-100 text-amber-900 border-amber-300', dot: 'bg-amber-700' },
+  { id: 'otra_provincia', oculto: true, label: 'Otra provincia', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
   { id: 'interesados', label: 'Muy interesados', color: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
   { id: 'beca', label: 'Beca conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
   { id: 'no_existe', label: 'Ya no existe', color: 'bg-stone-100 text-stone-500 border-stone-300 line-through', dot: 'bg-stone-400' },
@@ -37,6 +37,7 @@ const textoPracticas = (lista = []) => {
 }
 const aniosPracticas = (lista = []) => [...new Set(lista.map((p) => p.anio).filter(Boolean))].sort().join(', ')
 const grupoDe = (id) => GRUPOS.find((g) => g.id === id) || GRUPOS[GRUPOS.length - 1]
+// Los estados «oculto» ya no se pueden elegir; solo se muestran si alguna empresa sigue en ellos
 const estadoDe = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 
 // Cuántas empresas sin contactar se asignan de golpe y a partir de cuántas se avisa
@@ -691,7 +692,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
           <div>
             <Label>Estado</Label>
             <div className="flex flex-wrap gap-2">
-              {ESTADOS.map((e) => (
+              {ESTADOS.filter((e) => !e.oculto || e.id === empresa?.estado).map((e) => (
                 <button
                   key={e.id}
                   onClick={() => set('estado', e.id)}
@@ -1583,7 +1584,7 @@ export default function App() {
                   >
                     Todas · {total}
                   </button>
-                  {chips.map((e) => {
+                  {chips.filter((e) => !e.oculto || delGrupo.some((c) => c.estado === e.id)).map((e) => {
                     const n = delGrupo.filter((c) => c.estado === e.id).length
                     return (
                       <button
