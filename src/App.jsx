@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, Inbox,
+  History, UserPlus, Inbox, MapPin,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -431,7 +431,7 @@ function AccionesContacto({ emp, yo }) {
 function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDeleted, onClose }) {
   const nueva = !empresa
   const [f, setF] = useState(
-    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', responsable: null, estado: 'sin_contactar', notas: '', proximo_contacto: null }
+    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', direccion: '', responsable: null, estado: 'sin_contactar', notas: '', proximo_contacto: null }
   )
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
   const [err, setErr] = useState('')
@@ -449,8 +449,10 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
       .then(({ data }) => setHist(data || []))
   }, [nueva, empresa?.id])
 
-  // Un miembro puede rellenar todos los campos al CREAR una empresa,
-  // pero al editar una existente solo toca estado, notas y próximo contacto.
+  // Un miembro puede rellenar todos los campos al CREAR una empresa.
+  // Al editar una existente puede tocar los datos de contacto (persona, teléfono,
+  // email, dirección), estado, notas y próximo contacto; nombre, CIF, sector y
+  // responsable siguen siendo solo de admin.
   const camposEditables = isAdmin || nueva
 
   const guardar = async () => {
@@ -460,7 +462,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
       if (nueva) {
         const { error } = await supabase.from('empresas').insert({
           nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email,
-          telefono: f.telefono,
+          telefono: f.telefono, direccion: f.direccion,
           responsable: isAdmin ? (f.responsable || null) : me.id,
           estado: f.estado,
           notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
@@ -468,8 +470,8 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
         if (error) throw error
       } else {
         const patch = isAdmin
-          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, responsable: f.responsable || null, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
-          : { estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          : { contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, notas: f.notas, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
       }
@@ -492,6 +494,22 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     onDeleted()
   }
 
+  const camposContacto = (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><Label>Persona de contacto</Label><Input value={f.contacto || ''} onChange={(e) => set('contacto', e.target.value)} /></div>
+        <div><Label>Teléfono</Label><Input type="tel" inputMode="tel" autoComplete="off" value={f.telefono || ''} onChange={(e) => set('telefono', e.target.value)} placeholder="+34 600 000 000" /></div>
+      </div>
+      <div><Label>Email</Label><Input type="email" inputMode="email" autoCapitalize="none" value={f.email || ''} onChange={(e) => set('email', e.target.value)} /></div>
+      <div><Label>Dirección</Label><Input value={f.direccion || ''} onChange={(e) => set('direccion', e.target.value)} placeholder="Calle, número, ciudad" /></div>
+      {f.direccion && (
+        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}`} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-blue-700 hover:underline"><MapPin className="w-3.5 h-3.5" />Ver en el mapa</a>
+      )}
+      <AccionesContacto emp={f} yo={me.nombre} />
+    </>
+  )
+
   return (
     <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
       <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -502,7 +520,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
         <div className="p-6 space-y-4">
           {camposEditables ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><Label>Empresa</Label><Input value={f.nombre} onChange={(e) => set('nombre', e.target.value)} /></div>
                 <div><Label>CIF</Label><Input value={f.cif || ''} onChange={(e) => set('cif', e.target.value.toUpperCase())} placeholder="B12345678" /></div>
               </div>
@@ -513,12 +531,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 </p>
               )}
               <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, telecos…" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Persona de contacto</Label><Input value={f.contacto} onChange={(e) => set('contacto', e.target.value)} /></div>
-                <div><Label>Teléfono</Label><Input value={f.telefono} onChange={(e) => set('telefono', e.target.value)} /></div>
-              </div>
-              <div><Label>Email</Label><Input value={f.email} onChange={(e) => set('email', e.target.value)} /></div>
-              <AccionesContacto emp={f} yo={me.nombre} />
+              {camposContacto}
               {isAdmin ? (
                 <div>
                   <Label>Responsable</Label>
@@ -533,19 +546,20 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 </div>
               ) : (
                 <p className="text-xs text-slate-500">
-                  Se te asignará a ti como responsable. Después solo podrás cambiar estado, notas y próximo contacto: si hay que corregir algún dato, pídeselo a un admin.
+                  Se te asignará a ti como responsable. Después podrás actualizar los datos de contacto, estado, notas y próximo contacto; para cambiar nombre, CIF o sector, pídeselo a un admin.
                 </p>
               )}
             </>
           ) : (
-            <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-1.5">
-              {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
-              {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
-              {f.contacto && <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-slate-400" />{f.contacto}</p>}
-              {f.email && <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-400" /><a href={gmailUrl(f.email)} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">{f.email}</a></p>}
-              {f.telefono && <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" /><a href={`tel:${String(f.telefono).replace(/\s/g, '')}`} className="text-blue-700 hover:underline">{f.telefono}</a></p>}
-              <div className="pt-1"><AccionesContacto emp={f} yo={me.nombre} /></div>
-            </div>
+            <>
+              {(f.cif || f.sector) && (
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-1.5">
+                  {f.cif && <p><span className="text-slate-400">CIF:</span> {f.cif}</p>}
+                  {f.sector && <p><span className="text-slate-400">Sector:</span> {f.sector}</p>}
+                </div>
+              )}
+              {camposContacto}
+            </>
           )}
           <div>
             <Label>Estado</Label>
@@ -1162,9 +1176,9 @@ function MiQuincena({ me, companies, onAbrir }) {
 
 // ---------- Exportar empresas a CSV (se abre en Excel) ----------
 function exportarEmpresas(lista, nombreDe) {
-  const cab = ['Empresa', 'CIF', 'Sector', 'Contacto', 'Telefono', 'Email', 'Estado', 'Responsable', 'Proximo contacto', 'Notas']
+  const cab = ['Empresa', 'CIF', 'Sector', 'Contacto', 'Telefono', 'Email', 'Direccion', 'Estado', 'Responsable', 'Proximo contacto', 'Notas']
   const filas = lista.map((c) => [
-    c.nombre, c.cif || '', c.sector || '', c.contacto || '', c.telefono || '', c.email || '',
+    c.nombre, c.cif || '', c.sector || '', c.contacto || '', c.telefono || '', c.email || '', c.direccion || '',
     estadoDe(c.estado).label, nombreDe(c.responsable), c.proximo_contacto || '',
     (c.notas || '').replace(/\n/g, ' | '),
   ])
