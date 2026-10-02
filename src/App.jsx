@@ -13,7 +13,7 @@ const ESTADOS = [
   { id: 'mail_enviado', label: 'Mail enviado', color: 'bg-yellow-50 text-yellow-700 border-yellow-200', dot: 'bg-yellow-400' },
   { id: 'mas_adelante', label: 'Para más adelante', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', dot: 'bg-fuchsia-500' },
   { id: 'segundo_plazo', oculto: true, label: 'Segundo plazo', color: 'bg-amber-100 text-amber-900 border-amber-300', dot: 'bg-amber-700' },
-  { id: 'otra_provincia', oculto: true, label: 'Otra provincia', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
+  { id: 'otra_provincia', label: 'Otra comunidad', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
   { id: 'interesados', label: 'Muy interesados', color: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
   { id: 'beca', label: 'Beca conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
   { id: 'no_existe', label: 'Ya no existe', color: 'bg-stone-100 text-stone-500 border-stone-300 line-through', dot: 'bg-stone-400' },
@@ -61,36 +61,17 @@ const ACCIONES = {
 }
 const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
 
-// Baremo de puntos del club. Cámbialo aquí y se recalcula todo el histórico:
-// los puntos no se guardan en la base de datos, se derivan del historial.
+// Baremo de puntos del club: cada empresa vale según su estado ACTUAL (máximo 3 por empresa).
+// No se acumula: si una empresa cambia de estado, sus puntos pasan a ser los del estado nuevo.
+// Los puntos son para la persona que tiene asignada la empresa. Las notas y las altas no puntúan.
+const PUNTOS_ESTADO = {
+  sin_contactar: 0,
+  no_contesta: 1, mail_enviado: 1, interesados: 1, segundo_plazo: 1,   // ya contactada
+  mas_adelante: 3, otra_provincia: 3, no_existe: 3, rechazada: 3, beca: 3, // cerrada (3 en total)
+}
 const PUNTOS = {
-  alta: 2,          // dar de alta una empresa nueva
-  nota: 1,          // escribir una nota de seguimiento
-  agenda: 0,        // mover el recordatorio
-  datos: 0,         // corregir teléfono, email…
-  responsable: 0,   // reasignaciones (las hace el admin, no puntúan)
-  estado: {
-    _: 1,               // cualquier cambio de estado
-    interesados: 5,     // pasar una empresa a «Muy interesados»
-    beca: 15,           // cerrar una beca
-  },
-  quincena: 10,       // seguimiento quincenal cumplido (ver QUINCENA)
+  quincena: 10,       // seguimiento quincenal cumplido (ver QUINCENA); es aparte de las empresas
 }
-// Un seguimiento con cambio de estado deja dos filas en el historial (estado + nota) con la misma
-// hora, persona y empresa. Se marca la nota para que ese seguimiento puntúe una sola vez.
-const claveSeg = (h) => `${h.empresa_id}|${h.usuario_id}|${h.creado}`
-function marcarNotasConEstado(rows) {
-  const conEstado = new Set(rows.filter((h) => h.accion === 'estado').map(claveSeg))
-  return rows.map((h) => (h.accion === 'nota' && conEstado.has(claveSeg(h)) ? { ...h, conEstado: true } : h))
-}
-const puntosDe = (h) =>
-  h.accion === 'nota' && h.conEstado ? 0
-  : h.accion === 'estado'
-    ? (PUNTOS.estado[h.estado_nuevo] ?? PUNTOS.estado._)
-    : h.accion === 'quincena'
-      ? (h.cumple ? PUNTOS.quincena : 0)
-      : (PUNTOS[h.accion] ?? 0)
-
 // ---------- Seguimiento quincenal ----------
 // Cada 14 días, contados desde QUINCENA.inicio (iguales para todo el equipo), se revisa a cada
 // persona: si ha vuelto a tocar TODAS las empresas que tenía en seguimiento al empezar la
@@ -511,7 +492,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     }
     const conNota = nota ? { notas: nota } : {}
     // Al pasar a «Beca conseguida» (o si un admin lo pide) se registran año y nº de prácticas
-    const registrar = (f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac
+    const registrar = isAdmin && ((f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac)
     const anio = parseInt(prac.anio, 10), num = parseInt(prac.num, 10)
     if (registrar && (!(anio >= 1990 && anio <= 2100) || !(num > 0))) {
       setErr('Indica el año y el número de prácticas conseguidas.')
@@ -759,7 +740,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               ))}
             </div>
           </div>
-          {((f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac) ? (
+          {isAdmin && ((f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac) ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="text-sm font-semibold text-emerald-900 mb-2">Prácticas conseguidas</p>
               <div className="grid grid-cols-2 gap-3">
@@ -771,6 +752,10 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 <button onClick={() => setAddPrac(false)} className="text-xs text-slate-500 hover:underline mt-1">Cancelar</button>
               )}
             </div>
+          ) : !isAdmin && f.estado === 'beca' && empresa?.estado !== 'beca' ? (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              ¡Enhorabuena! Un admin registrará el año y el número de prácticas para dejarla como empresa histórica.
+            </p>
           ) : isAdmin && (
             <button onClick={() => setAddPrac(true)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:underline">
@@ -989,49 +974,55 @@ function GraficaEmpresas({ users, companies }) {
 }
 
 // Puntos por persona en [desde, hasta]. Lo usan el panel de admin (Actividad) y el Ranking.
-// todo: historial hasta «hasta» (incluye lo anterior, que hace falta para las quincenas).
-// companies: empresas actuales (id, responsable, nombre); lo de empresas borradas no cuenta.
+// Cada empresa asignada suma PUNTOS_ESTADO de su estado actual, y cuenta en el periodo en el que
+// llegó a ese estado (último cambio de estado del historial). Si no hay registro de cuándo,
+// solo cuenta en periodos que empiezan a inicio de curso o antes.
+// Además, las quincenas cerradas dentro del periodo suman PUNTOS.quincena si se cumplieron.
 function calcularPuntos({ todo, companies, users, desde, hasta }) {
-  const idsVivos = new Set(companies.map((c) => c.id))
-  const iniRango = new Date(desde + 'T00:00:00')
-  // Lo de empresas ya eliminadas no cuenta: al borrar una empresa chorra, sus puntos desaparecen del periodo.
-  const filas = marcarNotasConEstado(todo.filter((h) => new Date(h.creado) >= iniRango && (!companies.length || idsVivos.has(h.empresa_id))))
-
-  // Quincenas cerradas cuyo último día cae dentro del rango, como filas más del desglose
+  const ini = new Date(desde + 'T00:00:00')
+  const fin = new Date(diaMas(hasta, 1) + 'T00:00:00')
   const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
-  const quincenas = []
+
+  const llegada = {}
+  for (const h of todo) {
+    if (h.accion !== 'estado') continue
+    const prev = llegada[h.empresa_id]
+    if (!prev || new Date(h.creado) >= new Date(prev.creado)) llegada[h.empresa_id] = h
+  }
+
+  const resumen = {}
+  const de = (id) => (resumen[id] ||= { id, nombre: nombreDeUsuario(id), contactadas: 0, cerradas: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] })
+
+  for (const c of companies) {
+    const pts = PUNTOS_ESTADO[c.estado] ?? 0
+    if (!c.responsable || !pts) continue
+    const l = llegada[c.id]
+    const cuando = l && l.estado_nuevo === c.estado ? l.creado : null
+    const dentro = cuando ? new Date(cuando) >= ini && new Date(cuando) < fin : desde <= INICIO_CURSO()
+    if (!dentro) continue
+    const r = de(c.responsable)
+    r.puntos += pts
+    if (pts >= 3) r.cerradas++; else r.contactadas++
+    if (c.estado === 'beca') r.becas++
+    r.filas.push({ id: `e-${c.id}`, tipo: 'empresa', empresa_nombre: c.nombre, estado: c.estado, creado: cuando, puntos: pts })
+  }
+
   for (const [uid, qs] of Object.entries(evaluarQuincenas(todo, companies, hasta))) {
     for (const q of qs) {
       const ultimo = diaMas(q.fin, -1)
       if (q.enCurso || ultimo < desde || ultimo > hasta) continue
-      quincenas.push({
-        id: `q-${uid}-${q.ini}`, usuario_id: uid, usuario_nombre: nombreDeUsuario(uid), accion: 'quincena',
+      const r = de(uid)
+      if (q.cumple) { r.quincenas++; r.puntos += PUNTOS.quincena }
+      r.filas.push({
+        id: `q-${uid}-${q.ini}`, tipo: 'quincena', creado: q.fin + 'T00:00:00', puntos: q.cumple ? PUNTOS.quincena : 0,
         empresa_nombre: `Quincena ${fechaCorta(q.ini)} – ${fechaCorta(ultimo)}`,
-        detalle: q.cumple
-          ? `${q.hechas}/${q.total} empresas seguidas`
-          : `${q.hechas}/${q.total} · faltó: ${q.faltan.map((c) => c.nombre).join(', ')}`,
-        cumple: q.cumple, creado: q.fin + 'T00:00:00',
+        detalle: q.cumple ? `${q.hechas}/${q.total} empresas seguidas` : `${q.hechas}/${q.total} · faltó: ${q.faltan.map((c) => c.nombre).filter(Boolean).join(', ')}`,
       })
     }
   }
-  const movimientos = [...filas, ...quincenas].sort((a, b) => new Date(b.creado) - new Date(a.creado))
 
-  const resumen = movimientos.reduce((acc, h) => {
-    const k = h.usuario_id || h.usuario_nombre
-    acc[k] = acc[k] || { id: k, nombre: h.usuario_nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
-    const r = acc[k]
-    if (r[h.accion] !== undefined && !h.conEstado) r[h.accion]++
-    if (h.accion === 'estado' && h.estado_nuevo === 'beca') r.becas++
-    if (h.accion === 'quincena' && h.cumple) r.quincenas++
-    r.puntos += puntosDe(h)
-    r.filas.push(h)
-    return acc
-  }, {})
-
-  // Gente sin ni una acción en el periodo: también interesa verla, con un 0
-  users.forEach((u) => {
-    if (!resumen[u.id]) resumen[u.id] = { id: u.id, nombre: u.nombre, alta: 0, estado: 0, nota: 0, becas: 0, quincenas: 0, puntos: 0, filas: [] }
-  })
+  users.forEach((u) => de(u.id))
+  for (const r of Object.values(resumen)) r.filas.sort((a, b) => new Date(b.creado || 0) - new Date(a.creado || 0))
   const lista = Object.values(resumen).sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
   return { lista }
 }
@@ -1107,8 +1098,8 @@ function Actividad({ users, companies }) {
   const { lista } = calcularPuntos({ todo: todo || [], companies, users, desde, hasta })
 
   const exportar = () => {
-    const cab = ['Persona', 'Altas', 'Cambios de estado', 'Notas', 'Becas', 'Quincenas cumplidas', 'Puntos']
-    const csv = [cab, ...lista.map((d) => [d.nombre, d.alta, d.estado, d.nota, d.becas, d.quincenas, d.puntos])]
+    const cab = ['Persona', 'Empresas contactadas (1 pt)', 'Empresas cerradas (3 pts)', 'Becas', 'Quincenas cumplidas', 'Puntos']
+    const csv = [cab, ...lista.map((d) => [d.nombre, d.contactadas, d.cerradas, d.becas, d.quincenas, d.puntos])]
       .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
@@ -1184,9 +1175,8 @@ function Actividad({ users, companies }) {
             <thead>
               <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
                 <th className="text-left font-medium pb-2">Persona</th>
-                <th className="font-medium pb-2">Altas</th>
-                <th className="font-medium pb-2">Estados</th>
-                <th className="font-medium pb-2">Notas</th>
+                <th className="font-medium pb-2" title="Empresas contactadas (1 punto)">Contact.</th>
+                <th className="font-medium pb-2" title="Empresas cerradas: más adelante, otra comunidad, ya no existe, no quieren o beca (3 puntos)">Cerradas</th>
                 <th className="font-medium pb-2">Becas</th>
                 <th className="font-medium pb-2" title="Quincenas de seguimiento cumplidas">Quinc.</th>
                 <th className="font-medium pb-2 pl-3">Puntos</th>
@@ -1203,31 +1193,30 @@ function Actividad({ users, companies }) {
                       <ChevronRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${abierto === d.id ? 'rotate-90' : ''}`} />
                       {d.nombre}
                     </td>
-                    <td className="text-slate-500">{d.alta}</td>
-                    <td className="text-slate-500">{d.estado}</td>
-                    <td className="text-slate-500">{d.nota}</td>
+                    <td className="text-slate-500">{d.contactadas}</td>
+                    <td className="text-slate-500">{d.cerradas}</td>
                     <td className={d.becas ? 'text-emerald-700 font-semibold' : 'text-slate-300'}>{d.becas}</td>
                     <td className={d.quincenas ? 'text-indigo-700 font-semibold' : 'text-slate-300'}>{d.quincenas}</td>
                     <td className="font-bold text-slate-900 pl-3">{d.puntos}</td>
                   </tr>
                   {abierto === d.id && (
                     <tr>
-                      <td colSpan={7} className="bg-slate-50 px-3 py-3">
+                      <td colSpan={6} className="bg-slate-50 px-3 py-3">
                         {d.filas.length === 0 ? (
-                          <p className="text-xs text-slate-400">Sin movimientos en este periodo.</p>
+                          <p className="text-xs text-slate-400">Sin puntos en este periodo.</p>
                         ) : (
                           <ol className="space-y-1.5 max-h-72 overflow-y-auto">
                             {d.filas.map((h) => (
-                              <li key={h.id} className="flex items-baseline gap-2 text-xs">
-                                <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe(h.accion).color}`}>
-                                  {accionDe(h.accion).label}
-                                </span>
+                              <li key={h.id} className="flex items-center gap-2 text-xs">
+                                {h.tipo === 'empresa'
+                                  ? <Badge estadoId={h.estado} />
+                                  : <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe('quincena').color}`}>Quincena</span>}
                                 <span className="flex-1 min-w-0 text-slate-600 truncate">
-                                  <strong className="text-slate-800">{h.empresa_nombre}</strong> · {detalleLegible(h)}
+                                  <strong className="text-slate-800">{h.empresa_nombre}</strong>{h.detalle ? ` · ${h.detalle}` : ''}
                                 </span>
-                                <span className="shrink-0 text-slate-400">{fecha(h.creado)}</span>
-                                <span className={`shrink-0 w-8 text-right tabular-nums ${puntosDe(h) ? 'text-slate-700 font-semibold' : 'text-slate-300'}`}>
-                                  +{puntosDe(h)}
+                                <span className="shrink-0 text-slate-400">{h.creado ? fecha(h.creado) : 'sin fecha'}</span>
+                                <span className={`shrink-0 w-8 text-right tabular-nums ${h.puntos ? 'text-slate-700 font-semibold' : 'text-slate-300'}`}>
+                                  +{h.puntos}
                                 </span>
                               </li>
                             ))}
@@ -1244,11 +1233,12 @@ function Actividad({ users, companies }) {
       )}
 
       <p className="text-xs text-slate-400 mt-4 leading-relaxed">
-        Baremo actual: alta de empresa {PUNTOS.alta} · nota de seguimiento {PUNTOS.nota} ·
-        cambio de estado {PUNTOS.estado._} (muy interesados {PUNTOS.estado.interesados}, beca conseguida {PUNTOS.estado.beca}) ·
-        quincena de seguimiento cumplida {PUNTOS.quincena} (cada {QUINCENA.dias} días desde el {fechaCorta(QUINCENA.inicio)}:
+        Baremo actual (por empresa, según su estado actual y para quien la tiene asignada; máximo 3 por empresa):
+        sin contactar 0 · no lo cogen, mail enviado o muy interesados 1 · para más adelante, otra comunidad, ya no existe,
+        no quieren o beca conseguida 3. Si una empresa vuelve a un estado anterior, sus puntos bajan. Las notas y las altas no puntúan.
+        Aparte, quincena de seguimiento cumplida {PUNTOS.quincena} (cada {QUINCENA.dias} días desde el {fechaCorta(QUINCENA.inicio)}:
         haber escrito una nota o cambiado el estado de todas tus empresas en seguimiento; se suma al cerrar la quincena).
-        Se cambia en la constante <code>PUNTOS</code> al principio de App.jsx. Haz clic en una persona para ver el desglose.
+        Se cambia en <code>PUNTOS_ESTADO</code> al principio de App.jsx. Haz clic en una persona para ver el desglose.
       </p>
     </div>
   )
@@ -1325,8 +1315,9 @@ function Ranking({ users, me }) {
         })}
       </div>
       <p className="text-xs text-slate-500 px-1">
-        Seguimiento con cambio de estado {PUNTOS.estado._} · nota {PUNTOS.nota} · alta de empresa {PUNTOS.alta} ·
-        muy interesados {PUNTOS.estado.interesados} · beca {PUNTOS.estado.beca} · quincena cumplida {PUNTOS.quincena}.
+        Cada empresa que llevas puntúa según su estado actual: contactada (no lo cogen, mail enviado, muy interesados) 1 punto;
+        cerrada (para más adelante, otra comunidad, ya no existe, no quieren o beca conseguida) 3 puntos en total. Máximo 3 por empresa.
+        Quincena de seguimiento cumplida: +{PUNTOS.quincena}.
       </p>
     </div>
   )
