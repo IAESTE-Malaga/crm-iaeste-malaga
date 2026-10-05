@@ -69,6 +69,10 @@ const PUNTOS_ESTADO = {
   no_contesta: 1, mail_enviado: 1, interesados: 1, segundo_plazo: 1,   // ya contactada
   mas_adelante: 3, otra_provincia: 3, no_existe: 3, rechazada: 3, beca: 3, // cerrada (3 en total)
 }
+// Un seguimiento con cambio de estado deja dos filas en el historial (estado + nota) con la misma
+// hora, persona y empresa: así se emparejan en la ficha de la empresa.
+const claveSeg = (h) => `${h.empresa_id}|${h.usuario_id}|${h.creado}`
+
 const PUNTOS = {
   quincena: 10,       // seguimiento quincenal cumplido (ver QUINCENA); es aparte de las empresas
 }
