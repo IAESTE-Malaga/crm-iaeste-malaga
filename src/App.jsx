@@ -316,6 +316,48 @@ const Btn = ({ children, variant = 'primary', ...props }) => {
 }
 
 // ---------- Login / Registro ----------
+// ---------- Cambiar mi contraseña (también al volver de un enlace de recuperación) ----------
+function CambiarContrasena({ recuperacion, onClose }) {
+  const [p1, setP1] = useState('')
+  const [p2, setP2] = useState('')
+  const [err, setErr] = useState('')
+  const [ok, setOk] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const guardar = async () => {
+    setErr('')
+    if (p1.length < 6) { setErr('La contraseña necesita al menos 6 caracteres.'); return }
+    if (p1 !== p2) { setErr('Las dos contraseñas no coinciden.'); return }
+    setBusy(true)
+    const { error } = await supabase.auth.updateUser({ password: p1 })
+    setBusy(false)
+    if (error) setErr(error.message)
+    else setOk(true)
+  }
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-bold text-slate-900 flex items-center gap-2"><KeyRound className="w-4 h-4" />{recuperacion ? 'Elige una contraseña nueva' : 'Cambiar mi contraseña'}</h2>
+        {ok ? (
+          <>
+            <p className="text-sm text-emerald-700">Contraseña cambiada ✓ La próxima vez entra con la nueva.</p>
+            <Btn onClick={onClose} className="w-full">Cerrar</Btn>
+          </>
+        ) : (
+          <>
+            <div><Label>Contraseña nueva</Label><Input type="password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} /></div>
+            <div><Label>Repítela</Label><Input type="password" value={p2} onChange={(e) => setP2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && guardar()} /></div>
+            {err && <p className="text-sm text-rose-600">{err}</p>}
+            <div className="flex gap-2 justify-end">
+              <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+              <Btn onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</Btn>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Auth() {
   // Con ?registro en el enlace (https://…/?registro) se abre directamente en «Crear cuenta»
   const [modo, setModo] = useState(() =>
@@ -327,6 +369,18 @@ function Auth() {
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Recuperación por email. Mientras no haya un SMTP propio configurado en Supabase, el correo solo
+  // llega a los miembros del proyecto de Supabase: si falla, se indica que lo pida a un admin.
+  const recuperar = async () => {
+    setErr(''); setInfo('')
+    if (!email.trim()) { setErr('Escribe tu email arriba y vuelve a pulsar «¿Has olvidado tu contraseña?».'); return }
+    setBusy(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin })
+    setBusy(false)
+    if (error) setErr('No se ha podido enviar el correo de recuperación. Pide a un admin del comité que te ponga una contraseña temporal desde la pestaña Equipo.')
+    else setInfo('Si ese email tiene cuenta, te hemos enviado un enlace para elegir una contraseña nueva. Revisa también el spam.')
+  }
 
   const enviar = async () => {
     setErr(''); setInfo(''); setBusy(true)
@@ -393,6 +447,11 @@ function Auth() {
             <KeyRound className="w-4 h-4" />
             {busy ? 'Un momento…' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
           </Btn>
+          {modo === 'login' && (
+            <button onClick={recuperar} disabled={busy} className="w-full text-center text-xs text-slate-500 hover:text-[#0e2d4d] hover:underline">
+              ¿Has olvidado tu contraseña?
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1353,6 +1412,18 @@ function Equipo({ users, companies, me, onChanged }) {
     else onChanged()
   }
 
+  const [passDe, setPassDe] = useState(null)   // usuario al que se le pone contraseña temporal
+  const [passTmp, setPassTmp] = useState('')
+  const [passOk, setPassOk] = useState('')
+  const ponerTemporal = async () => {
+    setErr(''); setPassOk('')
+    if (passTmp.length < 6) { setErr('La contraseña temporal necesita al menos 6 caracteres.'); return }
+    const { error } = await supabase.rpc('admin_poner_contrasena', { p_usuario: passDe.id, p_contrasena: passTmp })
+    if (error) { setErr(`No se ha podido cambiar: ${error.message}`); return }
+    setPassOk(`Listo: ${passDe.nombre} ya puede entrar con «${passTmp}». Dile que la cambie con el icono de la llave, arriba a la derecha.`)
+    setPassDe(null); setPassTmp('')
+  }
+
   const cambiarRol = async (u, rol) => {
     setErr('')
     const { error } = await supabase.from('profiles').update({ rol }).eq('id', u.id)
@@ -1364,10 +1435,11 @@ function Equipo({ users, companies, me, onChanged }) {
     <div className="max-w-2xl mx-auto space-y-4">
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-900">
         Para incorporar a alguien: pídele que se <strong>registre</strong> en esta misma página. Aparecerá aquí
-        como miembro y podrás asignarle empresas o hacerle admin. Para eliminar cuentas o restablecer
-        contraseñas, usa el panel de Supabase (Authentication → Users).
+        como miembro y podrás asignarle empresas o hacerle admin. Si alguien olvida su contraseña,
+        pulsa la llave junto a su nombre para ponerle una temporal. Para eliminar cuentas, usa el panel de Supabase (Authentication → Users).
       </div>
       {err && <p className="text-sm text-rose-600">{err}</p>}
+      {passOk && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{passOk}</p>}
 
       <GraficaEmpresas users={users} companies={companies} />
 
@@ -1412,6 +1484,12 @@ function Equipo({ users, companies, me, onChanged }) {
               >
                 <UserPlus className="w-3.5 h-3.5" />+{LOTE}
               </button>
+              {u.id !== me.id && (
+                <button onClick={() => { setPassDe(u); setPassTmp(''); setPassOk('') }} title="Ponerle una contraseña temporal"
+                  className="p-1.5 rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50">
+                  <KeyRound className="w-3.5 h-3.5" />
+                </button>
+              )}
             <select
               value={u.rol}
               onChange={(e) => cambiarRol(u, e.target.value)}
@@ -1425,6 +1503,20 @@ function Equipo({ users, companies, me, onChanged }) {
           </div>
         ))}
       </div>
+
+      {passDe && (
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={() => setPassDe(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-bold text-slate-900">Contraseña temporal para {passDe.nombre}</h2>
+            <p className="text-xs text-slate-500">Su contraseña actual dejará de valer. Pásale la temporal por privado y pídele que la cambie al entrar.</p>
+            <Input value={passTmp} autoFocus onChange={(e) => setPassTmp(e.target.value)} placeholder="Mínimo 6 caracteres" onKeyDown={(e) => e.key === 'Enter' && ponerTemporal()} />
+            <div className="flex gap-2 justify-end">
+              <Btn variant="ghost" onClick={() => setPassDe(null)}>Cancelar</Btn>
+              <Btn onClick={ponerTemporal}>Cambiar contraseña</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1544,10 +1636,15 @@ export default function App() {
   const [agenda, setAgenda] = useState('') // '' | 'hoy' | 'atrasadas'
   const [modal, setModal] = useState(null) // null | 'nueva' | empresa
   const [aviso, setAviso] = useState('')
+  const [cambiarPass, setCambiarPass] = useState('') // '' | 'normal' | 'recuperacion'
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: sub } = supabase.auth.onAuthStateChange((evento, s) => {
+      setSession(s)
+      // Al entrar desde el enlace del correo de recuperación, se pide la contraseña nueva
+      if (evento === 'PASSWORD_RECOVERY') setCambiarPass('recuperacion')
+    })
     return () => sub.subscription.unsubscribe()
   }, [])
 
@@ -1657,6 +1754,13 @@ export default function App() {
               <div className="hidden sm:flex w-8 h-8 rounded-full bg-white text-[#0d2b45] font-bold text-sm items-center justify-center" title={me.nombre}>
                 {(me.nombre || '?').trim().charAt(0).toUpperCase()}
               </div>
+              <button
+                onClick={() => setCambiarPass('normal')}
+                title="Cambiar mi contraseña"
+                className="p-2 rounded-full hover:bg-white/[0.08] text-white/70 hover:text-white"
+              >
+                <KeyRound className="w-4 h-4" />
+              </button>
               <button
                 onClick={() => supabase.auth.signOut()}
                 title="Salir"
@@ -1898,6 +2002,8 @@ export default function App() {
           onClose={() => setModal(null)}
         />
       )}
+
+      {cambiarPass && <CambiarContrasena recuperacion={cambiarPass === 'recuperacion'} onClose={() => setCambiarPass('')} />}
 
       {aviso && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#0d2b45] text-white text-sm px-4 py-2 rounded-full shadow-lg z-50">
