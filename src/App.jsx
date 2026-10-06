@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, Inbox, MapPin, Star,
+  History, UserPlus, Inbox, MapPin, Star, AlertTriangle,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -90,6 +90,13 @@ const QUINCENA = {
   dias: 14,
   activos: ['no_contesta', 'mail_enviado', 'interesados'],
   cuentan: ['nota', 'estado'],
+}
+// ---------- Aviso «Realizar seguimiento» ----------
+// Una empresa en seguimiento (no cerrada) que lleva SIN_MOVER.dias sin una nota ni un cambio de
+// estado se marca con un aviso. No cuentan las que tienen un próximo contacto programado a futuro.
+const SIN_MOVER = {
+  dias: 7,
+  estados: ['no_contesta', 'mail_enviado', 'interesados', 'segundo_plazo'],
 }
 const isoDia = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const diaMas = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDia(d) }
@@ -1582,6 +1589,139 @@ function MiQuincena({ me, companies, onAbrir }) {
   )
 }
 
+// ---------- Seguimiento (solo admin): últimos cambios del CRM ----------
+// Sale del historial, así que cada entrada conserva la nota que se escribió EN ESE MOMENTO:
+// aunque la empresa cambie luego de estado o tenga notas nuevas, lo ya escrito no cambia.
+function Seguimiento({ users, companies, version, onAbrir }) {
+  const [dias, setDias] = useState(7)
+  const [persona, setPersona] = useState('')
+  const [tipo, setTipo] = useState('seguimientos') // 'seguimientos' (notas y estados) | 'todo'
+  const [busca, setBusca] = useState('')
+  const [filas, setFilas] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    setFilas(null); setErr('')
+    traerTodo(() => supabase
+      .from('historial')
+      .select('id, empresa_id, usuario_id, usuario_nombre, empresa_nombre, accion, detalle, estado_anterior, estado_nuevo, creado')
+      .gte('creado', sumarDias(-dias) + 'T00:00:00')
+      .order('creado', { ascending: false })
+      .order('id', { ascending: false }))
+      .then(setFilas)
+      .catch((e) => { setErr(e.message); setFilas([]) })
+  }, [dias, version])
+
+  // Un cambio de estado y su nota se guardan como dos filas con la misma clave: se juntan en una
+  const entradas = (() => {
+    if (!filas) return []
+    const notaDe = new Map(filas.filter((h) => h.accion === 'nota').map((h) => [claveSeg(h), h]))
+    const conEstado = new Set(filas.filter((h) => h.accion === 'estado').map(claveSeg))
+    const out = []
+    for (const h of filas) {
+      if (h.accion === 'estado') out.push({ ...h, texto: notaDe.get(claveSeg(h))?.detalle || '' })
+      else if (h.accion === 'nota') { if (!conEstado.has(claveSeg(h))) out.push({ ...h, texto: h.detalle }) }
+      else out.push(h)
+    }
+    const q = busca.trim().toLowerCase()
+    return out
+      .filter((h) => tipo === 'todo' || h.accion === 'estado' || h.accion === 'nota')
+      .filter((h) => !persona || h.usuario_id === persona)
+      .filter((h) => !q || (h.empresa_nombre || '').toLowerCase().includes(q) || (h.texto || '').toLowerCase().includes(q))
+  })()
+
+  // Agrupadas por día
+  const porDia = []
+  for (const h of entradas) {
+    const d = isoDia(new Date(h.creado))
+    if (!porDia.length || porDia[porDia.length - 1].dia !== d) porDia.push({ dia: d, items: [] })
+    porDia[porDia.length - 1].items.push(h)
+  }
+  const tituloDia = (d) => d === HOY() ? 'Hoy' : d === sumarDias(-1) ? 'Ayer'
+    : new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+  const hora = (iso) => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  const empresaDe = (id) => companies.find((c) => c.id === id)
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-5">
+        <h2 className="font-bold text-slate-900 flex items-center gap-1.5 mb-3">
+          <History className="w-4 h-4 text-slate-400" />Últimos cambios del CRM
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {[[1, 'Hoy y ayer'], [7, '7 días'], [30, '30 días']].map(([n, label]) => (
+            <button key={n} onClick={() => setDias(n)}
+              className={`px-2.5 py-1 rounded-lg border text-xs ${dias === n ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              {label}
+            </button>
+          ))}
+          <span className="w-px h-5 bg-slate-200 mx-1" />
+          <select value={persona} onChange={(e) => setPersona(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white">
+            <option value="">Todo el equipo</option>
+            {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white">
+            <option value="seguimientos">Notas y cambios de estado</option>
+            <option value="todo">Todos los movimientos</option>
+          </select>
+          <div className="relative flex-1 min-w-[10rem]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa o nota…"
+              className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30" />
+          </div>
+        </div>
+      </div>
+
+      {err && <p className="text-sm text-rose-600">{err}</p>}
+      {filas === null ? (
+        <p className="text-sm text-slate-400 px-1">Cargando…</p>
+      ) : porDia.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center text-sm text-slate-400">No hay cambios en este periodo.</div>
+      ) : porDia.map(({ dia, items }) => (
+        <div key={dia}>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1 mb-2 first-letter:uppercase">
+            {tituloDia(dia)} <span className="text-slate-400 font-normal normal-case">· {items.length}</span>
+          </p>
+          <ol className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] divide-y divide-slate-100 overflow-hidden">
+            {items.map((h) => {
+              const emp = empresaDe(h.empresa_id)
+              return (
+                <li key={h.id} className="px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-xs text-slate-400 tabular-nums w-10 shrink-0">{hora(h.creado)}</span>
+                    {emp ? (
+                      <button onClick={() => onAbrir(emp)} className="font-semibold text-slate-900 hover:underline text-left">{h.empresa_nombre || emp.nombre}</button>
+                    ) : (
+                      <span className="font-semibold text-slate-400 line-through" title="Empresa eliminada">{h.empresa_nombre || '(empresa eliminada)'}</span>
+                    )}
+                    {h.accion === 'estado' && h.estado_nuevo ? (
+                      <span className={`px-1.5 py-0.5 rounded border text-xs font-medium ${estadoDe(h.estado_nuevo).color}`}>
+                        {h.estado_anterior ? `${estadoDe(h.estado_anterior).label} → ` : ''}{estadoDe(h.estado_nuevo).label}
+                      </span>
+                    ) : (
+                      <span className={`px-1.5 py-0.5 rounded border text-xs font-medium ${accionDe(h.accion).color}`}>{accionDe(h.accion).label}</span>
+                    )}
+                    <span className="text-xs text-slate-500 ml-auto">{h.usuario_nombre}</span>
+                  </div>
+                  {(h.accion === 'estado' || h.accion === 'nota') ? (
+                    h.texto
+                      ? <p className="mt-1 pl-12 text-slate-700 whitespace-pre-wrap break-words">{h.texto}</p>
+                      : <p className="mt-1 pl-12 text-xs text-slate-400 italic">Sin nota</p>
+                  ) : h.detalle ? (
+                    <p className="mt-1 pl-12 text-xs text-slate-600 break-words">{detalleLegible(h)}</p>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ---------- Exportar empresas a CSV (se abre en Excel) ----------
 function exportarEmpresas(lista, nombreDe) {
   const cab = ['Empresa', 'CIF', 'Sector', 'Contacto', 'Telefono', 'Email', 'Direccion', 'Practicas', 'Estado', 'Responsable', 'Proximo contacto', 'Notas']
@@ -1637,6 +1777,7 @@ export default function App() {
   const [modal, setModal] = useState(null) // null | 'nueva' | empresa
   const [aviso, setAviso] = useState('')
   const [cambiarPass, setCambiarPass] = useState('') // '' | 'normal' | 'recuperacion'
+  const [movidas, setMovidas] = useState(null) // ids de empresas con nota o cambio de estado en los últimos SIN_MOVER.dias
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
@@ -1664,6 +1805,24 @@ export default function App() {
   }, [session])
 
   useEffect(() => { cargar() }, [cargar])
+
+  // Para el aviso «Realizar seguimiento»: qué empresas han tenido nota o cambio de estado hace poco.
+  // Se vuelve a calcular cada vez que cambian las empresas (al guardar una ficha, etc.).
+  const claveEmpresas = companies.map((c) => `${c.id}:${c.estado}:${c.actualizado || ''}`).join('|')
+  useEffect(() => {
+    if (!session) return
+    let vivo = true
+    const desde = new Date(Date.now() - SIN_MOVER.dias * 864e5).toISOString()
+    traerTodo(() => supabase
+      .from('historial')
+      .select('id, empresa_id')
+      .in('accion', ['nota', 'estado'])
+      .gte('creado', desde)
+      .order('id'))
+      .then((filas) => vivo && setMovidas(new Set(filas.map((h) => h.empresa_id))))
+      .catch(() => vivo && setMovidas(null))
+    return () => { vivo = false }
+  }, [session, claveEmpresas])
 
   const flash = (m, ms = 2500) => { setAviso(m); setTimeout(() => setAviso(''), ms) }
 
@@ -1700,6 +1859,10 @@ export default function App() {
   const deAgenda = isAdmin ? companies : companies.filter((c) => c.responsable === me.id)
   const nAtrasadas = deAgenda.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
   const nHoy = deAgenda.filter((c) => c.proximo_contacto === hoy).length
+  // Empresas en seguimiento sin nota ni cambio de estado en SIN_MOVER.dias (y sin próximo contacto a futuro)
+  const sinMover = (c) => !!movidas && !!c.responsable && SIN_MOVER.estados.includes(c.estado) &&
+    !(c.proximo_contacto && c.proximo_contacto > hoy) && !movidas.has(c.id) && (isAdmin || c.responsable === me.id)
+  const nSinMover = deAgenda.filter(sinMover).length
 
   // Los miembros ven Disponibles / Seguimiento / Cerradas (solo las suyas) y Todas (todas, en solo lectura)
   const gruposVisibles = GRUPOS.filter((g) => isAdmin || !g.soloAdmin)
@@ -1710,6 +1873,7 @@ export default function App() {
       if (agenda && !isAdmin && c.responsable !== me.id) return false
       if (agenda === 'hoy') return c.proximo_contacto && c.proximo_contacto <= hoy
       if (agenda === 'atrasadas') return c.proximo_contacto && c.proximo_contacto < hoy
+      if (agenda === 'seguimiento') return sinMover(c)
       return true
     })
     // Con «Para hoy» / «Atrasadas» activo se ven todas las que tocan, sea cual sea el apartado
@@ -1735,7 +1899,7 @@ export default function App() {
           <div className="flex items-center gap-1.5 sm:gap-3">
             {(
               <nav className="flex gap-0.5 sm:gap-1">
-                {[['empresas', 'Empresas'], ...(isAdmin ? [['equipo', 'Equipo']] : []), ['ranking', 'Ranking']].map(([id, label]) => (
+                {[['empresas', 'Empresas'], ...(isAdmin ? [['seguimiento', 'Seguimiento'], ['equipo', 'Equipo']] : []), ['ranking', 'Ranking']].map(([id, label]) => (
                   <button
                     key={id}
                     onClick={() => setTab(id)}
@@ -1776,6 +1940,8 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-6">
         {tab === 'ranking' ? (
           <Ranking users={users} me={me} />
+        ) : tab === 'seguimiento' && isAdmin ? (
+          <Seguimiento users={users} companies={companies} version={claveEmpresas} onAbrir={setModal} />
         ) : tab === 'equipo' && isAdmin ? (
           <Equipo users={users} companies={companies} me={me} onChanged={cargar} />
         ) : (
@@ -1797,16 +1963,27 @@ export default function App() {
               </div>
             )}
             <MiQuincena me={me} companies={companies} onAbrir={setModal} />
-            {(nHoy + nAtrasadas) > 0 && (
+            {(nHoy + nAtrasadas + nSinMover) > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
-                <button
+                {nSinMover > 0 && (
+                  <button
+                    onClick={() => setAgenda(agenda === 'seguimiento' ? '' : 'seguimiento')}
+                    title={`Empresas en seguimiento sin ninguna nota ni cambio de estado en ${SIN_MOVER.dias} días`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${
+                      agenda === 'seguimiento' ? 'bg-orange-600 text-white border-orange-600' : 'bg-orange-50 text-orange-700 border-orange-300 hover:bg-orange-100'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />Realizar seguimiento · {nSinMover}
+                  </button>
+                )}
+                {(nHoy + nAtrasadas) > 0 && <button
                   onClick={() => setAgenda(agenda === 'hoy' ? '' : 'hoy')}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${
                     agenda === 'hoy' ? 'bg-blue-700 text-white border-blue-700' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
                   }`}
                 >
                   <CalendarClock className="w-3.5 h-3.5" />Para hoy · {nHoy + nAtrasadas}
-                </button>
+                </button>}
                 {nAtrasadas > 0 && (
                   <button
                     onClick={() => setAgenda(agenda === 'atrasadas' ? '' : 'atrasadas')}
@@ -1967,6 +2144,12 @@ export default function App() {
                     <span className={`hidden md:flex items-center gap-1.5 text-xs shrink-0 ${c.responsable === me.id ? 'text-[#0e2d4d] font-semibold' : 'text-slate-500'}`}>
                       <User className="w-3.5 h-3.5" />{c.responsable === me.id ? 'Tú' : nombreDe(c.responsable)}
                     </span>
+                    {sinMover(c) && (
+                      <span title={`Sin notas ni cambios de estado en ${SIN_MOVER.dias} días o más`}
+                        className="inline-flex items-center gap-1 text-xs font-semibold shrink-0 px-2 py-0.5 rounded-full border bg-orange-50 text-orange-700 border-orange-300">
+                        <AlertTriangle className="w-3.5 h-3.5" /><span className="hidden sm:inline">Realizar seguimiento</span>
+                      </span>
+                    )}
                     {c.proximo_contacto && (
                       <span className={`hidden sm:inline-flex items-center gap-1 text-xs font-medium shrink-0 px-2 py-0.5 rounded-full border ${
                         c.proximo_contacto < hoy
