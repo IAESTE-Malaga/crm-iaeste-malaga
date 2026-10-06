@@ -322,7 +322,68 @@ const Btn = ({ children, variant = 'primary', ...props }) => {
   )
 }
 
-// ---------- Login / Registro ----------
+// ---------- Seguridad de las cuentas ----------
+// Dominios de correo temporal / desechable. Es solo una primera barrera para avisar al momento:
+// el bloqueo de verdad lo hace Supabase con el hook «Before User Created» (auth_seguridad.sql),
+// que usa su propia lista. Si añades un dominio aquí, añádelo también allí.
+const DOMINIOS_DESECHABLES = new Set([
+  'mailinator.com', 'guerrillamail.com', 'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz', 'guerrillamailblock.com', 'sharklasers.com', 'grr.la', 'pokemail.net', 'spam4.me',
+  '10minutemail.com', '10minutemail.net', '10minutemail.co.uk', '10minemail.com', '20minutemail.com', 'temp-mail.org', 'temp-mail.io', 'tempmail.com', 'tempmail.net', 'tempmail.dev',
+  'tempmailo.com', 'tempmail.plus', 'tempr.email', 'tempail.com', 'temporary-mail.net', 'tmpmail.org', 'tmpmail.net', 'tmail.ws', 'throwawaymail.com', 'trashmail.com',
+  'trashmail.net', 'trashmail.de', 'trash-mail.com', 'yopmail.com', 'yopmail.net', 'yopmail.fr', 'cool.fr.nf', 'jetable.fr.nf', 'nospam.ze.tc', 'nomail.xl.cx',
+  'mega.zik.dj', 'speed.1s.fr', 'courriel.fr.nf', 'moncourrier.fr.nf', 'monemail.fr.nf', 'monmail.fr.nf', 'dispostable.com', 'getnada.com', 'nada.email', 'maildrop.cc',
+  'mailnesia.com', 'mailcatch.com', 'mintemail.com', 'mohmal.com', 'emailondeck.com', 'fakeinbox.com', 'fakemail.net', 'fake-mail.net', 'spamgourmet.com', 'spambox.us',
+  'mytemp.email', 'mailpoof.com', 'moakt.com', 'moakt.cc', 'tempinbox.com', 'inboxkitten.com', 'burnermail.io', 'mail.tm', 'mail.gw', 'emailfake.com',
+  'email-fake.com', 'crazymailing.com', 'disposablemail.com', 'discard.email', 'discardmail.com', 'discardmail.de', 'harakirimail.com', 'incognitomail.org', 'mailforspam.com', 'spamfree24.org',
+  'mailtemp.net', 'luxusmail.org', 'tempmailaddress.com', 'emltmp.com', 'mailinator.net', 'mailinator2.com', 'binkmail.com', 'bobmail.info', 'chammy.info', 'devnullmail.com',
+  'letthemeatspam.com', 'mailinater.com', 'notmailinator.com', 'reallymymail.com', 'safetymail.info', 'sogetthis.com', 'spamherelots.com', 'thisisnotmyrealemail.com', 'tradermail.info', 'veryrealemail.com',
+  'zippymail.info', 'mailexpire.com', 'meltmail.com', 'spamex.com', 'anonbox.net', 'anonymbox.com', 'owlymail.com', 'tempmailer.com', 'temp-mail.ru', 'dropmail.me',
+  'mailsac.com', 'inboxbear.com', 'linshiyouxiang.net', 'mail7.io', 'smailpro.com', 'byom.de', 'wegwerfmail.de', 'wegwerfmail.net', 'einrot.com', 'cuvox.de',
+  'dayrep.com', 'fleckens.hu', 'gustr.com', 'jourrapide.com', 'rhyta.com', 'superrito.com', 'teleworm.us', 'armyspy.com', 'zetmail.com', 'vomoto.com',
+])
+const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i
+// Devuelve el motivo por el que un email no vale para registrarse, o '' si vale
+const problemaEmail = (email) => {
+  const e = String(email || '').trim().toLowerCase()
+  if (!EMAIL_RE.test(e) || e.length > 254) return 'Ese email no tiene un formato válido.'
+  const dominio = e.split('@')[1]
+  const partes = dominio.split('.')
+  for (let i = 0; i < partes.length - 1; i++) {
+    if (DOMINIOS_DESECHABLES.has(partes.slice(i).join('.'))) return 'No se admiten correos temporales o desechables. Usa tu email personal o el de la universidad.'
+  }
+  return ''
+}
+// Contraseñas: mínimo 8 caracteres, con letras y números (pon el mismo mínimo en Supabase)
+const PASS_MIN = 8
+const problemaPass = (p) =>
+  p.length < PASS_MIN ? `La contraseña necesita al menos ${PASS_MIN} caracteres.`
+    : !/[a-zA-Z]/.test(p) || !/[0-9]/.test(p) ? 'La contraseña tiene que llevar letras y números.'
+      : ''
+// Traduce los errores de Supabase Auth a mensajes claros (sin revelar si un email tiene cuenta)
+const errorAuth = (e) => {
+  const m = e?.message || ''
+  const code = e?.code || ''
+  if (code === 'invalid_credentials' || m === 'Invalid login credentials') return 'Email o contraseña incorrectos.'
+  if (code === 'email_not_confirmed' || /email not confirmed/i.test(m)) return 'NO_CONFIRMADO'
+  if (e?.status === 429 || /rate limit|security purposes/i.test(m)) return 'Demasiados intentos seguidos. Espera unos minutos y vuelve a probar.'
+  if (code === 'weak_password' || /password/i.test(m) && /weak|short|characters/i.test(m)) return `Contraseña demasiado débil: mínimo ${PASS_MIN} caracteres, con letras y números.`
+  if (code === 'same_password') return 'La contraseña nueva tiene que ser distinta de la anterior.'
+  // Mensaje del hook de Supabase que bloquea correos desechables
+  if (/desechable|temporal/i.test(m)) return m
+  return m || 'Ha habido un error. Inténtalo de nuevo.'
+}
+// Al volver de un enlace de email caducado o ya usado, Supabase añade #error=…&error_code=… a la URL
+const leerErrorEnlace = () => {
+  const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const q = new URLSearchParams(window.location.search)
+  const code = h.get('error_code') || q.get('error_code')
+  if (!code && !h.get('error') && !q.get('error')) return ''
+  window.history.replaceState(null, '', window.location.pathname)
+  return code === 'otp_expired'
+    ? 'El enlace ha caducado o ya se ha usado. Pide uno nuevo.'
+    : (h.get('error_description') || q.get('error_description') || 'El enlace no es válido.').replace(/\+/g, ' ')
+}
+
 // ---------- Cambiar mi contraseña (también al volver de un enlace de recuperación) ----------
 function CambiarContrasena({ recuperacion, onClose }) {
   const [p1, setP1] = useState('')
@@ -332,16 +393,23 @@ function CambiarContrasena({ recuperacion, onClose }) {
   const [busy, setBusy] = useState(false)
   const guardar = async () => {
     setErr('')
-    if (p1.length < 6) { setErr('La contraseña necesita al menos 6 caracteres.'); return }
+    const prob = problemaPass(p1)
+    if (prob) { setErr(prob); return }
     if (p1 !== p2) { setErr('Las dos contraseñas no coinciden.'); return }
     setBusy(true)
     const { error } = await supabase.auth.updateUser({ password: p1 })
     setBusy(false)
-    if (error) setErr(error.message)
+    if (error) setErr(errorAuth(error))
     else setOk(true)
   }
+  // Si se llega desde el enlace de recuperación y se cancela, se cierra la sesión: el enlace
+  // solo sirve para poner una contraseña nueva, no para entrar sin ella.
+  const cerrar = async () => {
+    if (recuperacion && !ok) await supabase.auth.signOut()
+    onClose()
+  }
   return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={recuperacion ? undefined : cerrar}>
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-bold text-slate-900 flex items-center gap-2"><KeyRound className="w-4 h-4" />{recuperacion ? 'Elige una contraseña nueva' : 'Cambiar mi contraseña'}</h2>
         {ok ? (
@@ -351,11 +419,12 @@ function CambiarContrasena({ recuperacion, onClose }) {
           </>
         ) : (
           <>
-            <div><Label>Contraseña nueva</Label><Input type="password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} /></div>
-            <div><Label>Repítela</Label><Input type="password" value={p2} onChange={(e) => setP2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && guardar()} /></div>
+            <p className="text-xs text-slate-500">Mínimo {PASS_MIN} caracteres, con letras y números.</p>
+            <div><Label>Contraseña nueva</Label><Input type="password" autoComplete="new-password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} /></div>
+            <div><Label>Repítela</Label><Input type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && guardar()} /></div>
             {err && <p className="text-sm text-rose-600">{err}</p>}
             <div className="flex gap-2 justify-end">
-              <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+              <Btn variant="ghost" onClick={cerrar}>{recuperacion ? 'Cancelar y salir' : 'Cancelar'}</Btn>
               <Btn onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</Btn>
             </div>
           </>
@@ -365,54 +434,89 @@ function CambiarContrasena({ recuperacion, onClose }) {
   )
 }
 
+// ---------- Login / Registro / He olvidado mi contraseña ----------
 function Auth() {
   // Con ?registro en el enlace (https://…/?registro) se abre directamente en «Crear cuenta»
   const [modo, setModo] = useState(() =>
     new URLSearchParams(window.location.search).has('registro') ? 'registro' : 'login'
-  ) // login | registro
+  ) // login | registro | olvido
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
-  const [err, setErr] = useState('')
+  const [pass2, setPass2] = useState('')
+  const [err, setErr] = useState(() => leerErrorEnlace())
   const [info, setInfo] = useState('')
+  const [sinConfirmar, setSinConfirmar] = useState('') // email pendiente de confirmar (para reenviar)
   const [busy, setBusy] = useState(false)
+  const volverA = window.location.origin
 
-  // Recuperación por email. Mientras no haya un SMTP propio configurado en Supabase, el correo solo
-  // llega a los miembros del proyecto de Supabase: si falla, se indica que lo pida a un admin.
+  const cambiarModo = (m) => { setModo(m); setErr(''); setInfo(''); setSinConfirmar(''); setPass(''); setPass2('') }
+
+  // «He olvidado mi contraseña»: la respuesta es siempre la misma, exista o no la cuenta
   const recuperar = async () => {
     setErr(''); setInfo('')
-    if (!email.trim()) { setErr('Escribe tu email arriba y vuelve a pulsar «¿Has olvidado tu contraseña?».'); return }
+    const e = email.trim().toLowerCase()
+    if (!EMAIL_RE.test(e)) { setErr('Escribe un email válido.'); return }
     setBusy(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin })
+    const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo: volverA })
     setBusy(false)
-    if (error) setErr('No se ha podido enviar el correo de recuperación. Pide a un admin del comité que te ponga una contraseña temporal desde la pestaña Equipo.')
-    else setInfo('Si ese email tiene cuenta, te hemos enviado un enlace para elegir una contraseña nueva. Revisa también el spam.')
+    if (error && (error.status === 429 || /rate limit|security purposes/i.test(error.message))) {
+      setErr('Has pedido varios enlaces seguidos. Espera unos minutos y vuelve a probar.')
+      return
+    }
+    setInfo('Si el correo existe, se ha enviado un enlace para elegir una contraseña nueva. Caduca en 30 minutos y solo sirve una vez. Revisa también el spam.')
+  }
+
+  const reenviarConfirmacion = async () => {
+    setErr(''); setInfo(''); setBusy(true)
+    const { error } = await supabase.auth.resend({ type: 'signup', email: sinConfirmar, options: { emailRedirectTo: volverA } })
+    setBusy(false)
+    if (error) setErr(errorAuth(error))
+    else setInfo('Te hemos reenviado el email de confirmación. Revisa también el spam.')
   }
 
   const enviar = async () => {
-    setErr(''); setInfo(''); setBusy(true)
+    setErr(''); setInfo(''); setSinConfirmar('')
+    const e = email.trim().toLowerCase()
     try {
       if (modo === 'registro') {
         if (!nombre.trim()) throw new Error('Indica tu nombre.')
-        if (pass.length < 6) throw new Error('La contraseña necesita al menos 6 caracteres.')
+        const probE = problemaEmail(e)
+        if (probE) throw new Error(probE)
+        const probP = problemaPass(pass)
+        if (probP) throw new Error(probP)
+        if (pass !== pass2) throw new Error('Las dos contraseñas no coinciden.')
+        setBusy(true)
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: e,
           password: pass,
-          options: { data: { nombre: nombre.trim() } },
+          options: { data: { nombre: nombre.trim() }, emailRedirectTo: volverA },
         })
         if (error) throw error
-        // Si Supabase no pide confirmar el email, signUp ya devuelve sesión y se entra solo.
-        if (!data.session) setInfo('Cuenta creada. Te hemos enviado un email: ábrelo para confirmarla y después entra aquí.')
+        // Con «Confirm email» activado en Supabase no hay sesión hasta pulsar el enlace del correo.
+        // (Si el email ya tenía cuenta, Supabase responde igual: así no se revela quién está registrado.)
+        if (!data.session) {
+          setInfo(`Te hemos enviado un email a ${e}. Pulsa el enlace para activar tu cuenta y después entra aquí. Revisa también el spam.`)
+          setPass(''); setPass2('')
+        }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass })
+        if (!e || !pass) throw new Error('Escribe tu email y tu contraseña.')
+        setBusy(true)
+        const { error } = await supabase.auth.signInWithPassword({ email: e, password: pass })
         if (error) throw error
       }
-    } catch (e) {
-      setErr(e.message === 'Invalid login credentials' ? 'Email o contraseña incorrectos.' : e.message)
+    } catch (x) {
+      const m = errorAuth(x)
+      if (m === 'NO_CONFIRMADO') {
+        setSinConfirmar(e)
+        setErr('Todavía no has confirmado tu email. Abre el enlace que te enviamos al registrarte.')
+      } else setErr(m)
     } finally {
       setBusy(false)
     }
   }
+
+  const alPulsarEnter = (ev) => ev.key === 'Enter' && (modo === 'olvido' ? recuperar() : enviar())
 
   return (
     <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center p-4">
@@ -426,38 +530,71 @@ function Auth() {
             <p className="text-xs text-slate-500">Gestión de empresas</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 bg-slate-100 rounded-lg p-0.5 mb-5">
-          {[['login', 'Entrar'], ['registro', 'Crear cuenta']].map(([id, label]) => (
-            <button
-              key={id}
-              onClick={() => { setModo(id); setErr(''); setInfo('') }}
-              className={`py-1.5 rounded-md text-sm font-medium ${modo === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {modo === 'olvido' ? (
+          <div className="mb-5">
+            <h2 className="font-semibold text-slate-900">¿Has olvidado tu contraseña?</h2>
+            <p className="text-xs text-slate-500 mt-1">Escribe el email de tu cuenta y te enviaremos un enlace para elegir una nueva.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 bg-slate-100 rounded-lg p-0.5 mb-5">
+            {[['login', 'Entrar'], ['registro', 'Crear cuenta']].map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => cambiarModo(id)}
+                className={`py-1.5 rounded-md text-sm font-medium ${modo === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         {modo === 'registro' && (
           <p className="text-xs text-slate-500 mb-3">
-            ¿Es tu primera vez? Crea tu cuenta con tu nombre y email y entrarás directamente como miembro.
+            Crea tu cuenta con tu nombre y un email real: te llegará un correo para activarla antes de poder entrar.
           </p>
         )}
         <div className="space-y-3">
           {modo === 'registro' && (
-            <div><Label>Nombre</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Mario" /></div>
+            <div><Label>Nombre</Label><Input value={nombre} autoComplete="name" onChange={(e) => setNombre(e.target.value)} placeholder="Mario" /></div>
           )}
-          <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && enviar()} /></div>
-          <div><Label>Contraseña</Label><Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && enviar()} /></div>
+          <div><Label>Email</Label><Input type="email" autoComplete="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={alPulsarEnter} /></div>
+          {modo !== 'olvido' && (
+            <div><Label>Contraseña</Label><Input type="password" autoComplete={modo === 'registro' ? 'new-password' : 'current-password'} value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={alPulsarEnter} /></div>
+          )}
+          {modo === 'registro' && (
+            <>
+              <div><Label>Repite la contraseña</Label><Input type="password" autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} onKeyDown={alPulsarEnter} /></div>
+              <p className="text-[11px] text-slate-400 -mt-1">Mínimo {PASS_MIN} caracteres, con letras y números.</p>
+            </>
+          )}
           {err && <p className="text-sm text-rose-600 flex items-start gap-1"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{err}</p>}
-          {info && <p className="text-sm text-emerald-700">{info}</p>}
-          <Btn onClick={enviar} disabled={busy} className="w-full">
-            <KeyRound className="w-4 h-4" />
-            {busy ? 'Un momento…' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
-          </Btn>
-          {modo === 'login' && (
-            <button onClick={recuperar} disabled={busy} className="w-full text-center text-xs text-slate-500 hover:text-[#0e2d4d] hover:underline">
-              ¿Has olvidado tu contraseña?
+          {sinConfirmar && (
+            <button onClick={reenviarConfirmacion} disabled={busy} className="w-full text-center text-xs font-medium text-blue-700 hover:underline">
+              Reenviar el email de confirmación
             </button>
+          )}
+          {info && <p className="text-sm text-emerald-700">{info}</p>}
+          {modo === 'olvido' ? (
+            <>
+              <Btn onClick={recuperar} disabled={busy} className="w-full">
+                <Mail className="w-4 h-4" />{busy ? 'Un momento…' : 'Enviar enlace'}
+              </Btn>
+              <button onClick={() => cambiarModo('login')} className="w-full text-center text-xs text-slate-500 hover:text-[#0e2d4d] hover:underline">
+                Volver a entrar
+              </button>
+            </>
+          ) : (
+            <>
+              <Btn onClick={enviar} disabled={busy} className="w-full">
+                <KeyRound className="w-4 h-4" />
+                {busy ? 'Un momento…' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
+              </Btn>
+              {modo === 'login' && (
+                <button onClick={() => cambiarModo('olvido')} disabled={busy} className="w-full text-center text-xs text-slate-500 hover:text-[#0e2d4d] hover:underline">
+                  ¿Has olvidado tu contraseña?
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1424,7 +1561,7 @@ function Equipo({ users, companies, me, onChanged }) {
   const [passOk, setPassOk] = useState('')
   const ponerTemporal = async () => {
     setErr(''); setPassOk('')
-    if (passTmp.length < 6) { setErr('La contraseña temporal necesita al menos 6 caracteres.'); return }
+    { const prob = problemaPass(passTmp); if (prob) { setErr(prob); return } }
     const { error } = await supabase.rpc('admin_poner_contrasena', { p_usuario: passDe.id, p_contrasena: passTmp })
     if (error) { setErr(`No se ha podido cambiar: ${error.message}`); return }
     setPassOk(`Listo: ${passDe.nombre} ya puede entrar con «${passTmp}». Dile que la cambie con el icono de la llave, arriba a la derecha.`)
@@ -1516,7 +1653,7 @@ function Equipo({ users, companies, me, onChanged }) {
           <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-bold text-slate-900">Contraseña temporal para {passDe.nombre}</h2>
             <p className="text-xs text-slate-500">Su contraseña actual dejará de valer. Pásale la temporal por privado y pídele que la cambie al entrar.</p>
-            <Input value={passTmp} autoFocus onChange={(e) => setPassTmp(e.target.value)} placeholder="Mínimo 6 caracteres" onKeyDown={(e) => e.key === 'Enter' && ponerTemporal()} />
+            <Input value={passTmp} autoFocus onChange={(e) => setPassTmp(e.target.value)} placeholder={`Mínimo ${PASS_MIN} caracteres, con letras y números`} onKeyDown={(e) => e.key === 'Enter' && ponerTemporal()} />
             <div className="flex gap-2 justify-end">
               <Btn variant="ghost" onClick={() => setPassDe(null)}>Cancelar</Btn>
               <Btn onClick={ponerTemporal}>Cambiar contraseña</Btn>
