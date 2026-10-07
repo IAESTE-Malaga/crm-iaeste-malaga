@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, Inbox, MapPin, Star, AlertTriangle,
+  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -1556,6 +1556,28 @@ function Equipo({ users, companies, me, onChanged }) {
     else onChanged()
   }
 
+  // Quitar lote: devuelve al bote común hasta LOTE empresas que esa persona tenga
+  // «Sin contactar». Las que ya tienen seguimiento y las históricas no se tocan.
+  const quitables = (id) => companies.filter((c) => c.responsable === id && c.estado === 'sin_contactar' && !c.historica)
+  const quitarLote = async (u) => {
+    setErr('')
+    const ids = quitables(u.id).slice(-LOTE).map((c) => c.id)
+    if (ids.length === 0) {
+      setErr(`${u.nombre} no tiene empresas «Sin contactar» que se le puedan quitar.`)
+      return
+    }
+    if (!confirm(`¿Quitar ${ids.length} empresa${ids.length !== 1 ? 's' : ''} sin contactar a ${u.nombre}? Volverán al bote común.`)) return
+    setAsignando(u.id)
+    const { error } = await supabase
+      .from('empresas')
+      .update({ responsable: null, actualizado_por: me.nombre })
+      .in('id', ids)
+      .eq('estado', 'sin_contactar')
+    setAsignando('')
+    if (error) setErr(error.message)
+    else onChanged()
+  }
+
   const [passDe, setPassDe] = useState(null)   // usuario al que se le pone contraseña temporal
   const [passTmp, setPassTmp] = useState('')
   const [passOk, setPassOk] = useState('')
@@ -1591,7 +1613,7 @@ function Equipo({ users, companies, me, onChanged }) {
 
       <p className="text-xs text-slate-500 px-1">
         Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar» (sin contar las históricas, que se asignan a mano desde su ficha).
-        El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona.
+        El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona y <strong>−{LOTE}</strong> le quita {LOTE} de las que aún tiene sin contactar (vuelven al bote).
       </p>
 
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden">
@@ -1627,6 +1649,14 @@ function Equipo({ users, companies, me, onChanged }) {
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />+{LOTE}
+              </button>
+              <button
+                onClick={() => quitarLote(u)}
+                disabled={asignando === u.id || quitables(u.id).length === 0}
+                title={`Quitarle ${LOTE} empresas sin contactar y devolverlas al bote común`}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-medium inline-flex items-center gap-1 disabled:opacity-40"
+              >
+                <UserMinus className="w-3.5 h-3.5" />−{LOTE}
               </button>
               {u.id !== me.id && (
                 <button onClick={() => { setPassDe(u); setPassTmp(''); setPassOk('') }} title="Ponerle una contraseña temporal"
