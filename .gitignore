@@ -1,7 +1,15 @@
 node_modules
 dist
-.env
-.env.local
 .DS_Store
 
-KEYS.docx
+# Variables de entorno: solo se sube .env.example
+.env
+.env.*
+!.env.example
+
+# Nunca subir claves, backups ni volcados de la base de datos
+KEYS*
+*.backup
+*.backup.gz
+*.dump
+*.sql.gz

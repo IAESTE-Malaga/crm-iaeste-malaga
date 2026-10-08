@@ -1,36 +1,99 @@
-# CRM IAESTE
+# CRM IAESTE Madrid
 
-CRM para gestionar el contacto con empresas del comité. React + Vite + Tailwind CSS v4 + Supabase (auth y base de datos compartida con Row Level Security).
+Aplicación web para gestionar el contacto con empresas del comité: quién habla con quién, en qué punto está cada conversación, cuándo toca el siguiente seguimiento y un ranking de puntos del equipo.
 
-- **Admins**: ven todas las empresas, las crean/editan/eliminan, asignan responsables y gestionan roles del equipo.
-- **Miembros**: solo ven sus empresas asignadas y únicamente pueden actualizar el estado y las notas (impuesto en base de datos, no solo en la interfaz).
-- **Estados**: Sin contactar → Contactado → En conversación → Oferta conseguida / Rechazada.
+**Stack:** React 18 + Vite + Tailwind CSS v4 + Supabase (Auth + Postgres con Row Level Security). Despliegue pensado para Vercel.
 
-## 1. Crear el proyecto en Supabase
+## Roles
 
-1. Entra en [supabase.com](https://supabase.com) → **New project** (plan gratuito).
-2. Ve a **SQL Editor**, pega el contenido completo de `supabase/schema.sql` y pulsa **Run**.
-3. En **Authentication → Sign In / Up → Email**, desactiva **Confirm email** (para que el equipo pueda registrarse sin verificación de correo).
-4. En **Project Settings → API**, copia la **Project URL** y la **anon public key**.
+| Rol | Qué puede hacer |
+|---|---|
+| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas históricas), cambiar roles, poner contraseñas temporales |
+| **Miembro** | Ver todas las empresas (las ajenas en solo lectura). Crear empresas (quedan asignadas a él) y, en las suyas, editar contacto, CIF, estado, notas y próximo contacto |
 
-## 2. Configurar y ejecutar en local
+Las reglas están impuestas en la base de datos (políticas RLS y triggers), no solo en la interfaz. El primer usuario que se registra en una base vacía es admin. Siempre tiene que quedar al menos un admin.
+
+---
+
+## Entorno local (con base de datos propia)
+
+Todo corre en tu máquina con el CLI de Supabase sobre Docker: Postgres, Auth, API y un buzón de correo falso. No toca ningún proyecto real.
+
+**Requisitos:** Node 20+ y Docker Desktop abierto. La primera vez se descargan unas imágenes (unos minutos).
 
 ```bash
-cp .env.example .env      # y rellena con tu URL y anon key
 npm install
-npm run dev
+npm run local:setup     # arranca Supabase, aplica migraciones + datos de prueba y crea .env.development.local
+npm run dev             # http://localhost:5173
 ```
 
-**El primer usuario que se registre será admin automáticamente** (regístrate tú primero). El resto entra como miembro; desde la pestaña **Equipo** puedes ascender a la segunda persona a admin.
+| Servicio | URL |
+|---|---|
+| App | http://localhost:5173 |
+| Supabase Studio (ver/editar tablas) | http://127.0.0.1:54323 |
+| Mailpit (correos de confirmación y recuperación) | http://127.0.0.1:54324 |
 
-## 3. Desplegar en Vercel
+**Usuarios de prueba** (definidos en `supabase/seed.sql`):
 
-1. Sube el repo a GitHub.
-2. En [vercel.com](https://vercel.com) → **Add New Project** → importa el repo (detecta Vite solo).
-3. En **Environment Variables** añade `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
-4. **Deploy**. Comparte la URL con el equipo.
+| Email | Contraseña | Rol |
+|---|---|---|
+| ana@iaeste.test | Admin1234 | admin |
+| luis@iaeste.test | Admin1234 | admin |
+| marta@iaeste.test | Miembro1234 | miembro |
+| pablo@iaeste.test | Miembro1234 | miembro |
+| irene@iaeste.test | Miembro1234 | miembro |
 
-## Notas de seguridad
+Los datos de prueba (38 empresas ficticias con historial, históricas y bote común sin asignar) se generan con fechas relativas a hoy, así que la agenda, los avisos de seguimiento y la quincena siempre tienen algo que mostrar.
 
-- La `anon key` es pública por diseño; la seguridad real la imponen las políticas RLS del esquema.
-- El fichero `.env` está en `.gitignore` — no lo subas nunca al repo.
+Si te registras con un email nuevo, el correo de confirmación llega a **Mailpit**, no a una bandeja real.
+
+### Comandos útiles
+
+| Comando | Qué hace |
+|---|---|
+| `npm run db:reset` | Borra la base local y la recrea desde las migraciones + seed |
+| `npm run db:test` | Prueba de humo de permisos, triggers y RPCs contra la base local (modifica datos: haz `db:reset` después) |
+| `npm run db:stop` / `db:start` | Apaga / enciende los contenedores (los datos se conservan) |
+| `npm run db:status` | URLs y claves locales |
+| `npm run db:new-migration nombre` | Crea una migración nueva en `supabase/migrations/` |
+| `npm run build` | Build de producción en `dist/` |
+
+---
+
+## Desplegar desde cero (Supabase + Vercel)
+
+1. **Supabase:** crea un proyecto en [supabase.com](https://supabase.com). En una terminal del repo: `npx supabase login`, `npx supabase link --project-ref <ref>` y `npx supabase db push` (aplica las migraciones; **no** carga el seed).
+2. **Authentication → Hooks → Before User Created:** actívalo con la función Postgres `public.hook_antes_de_crear_usuario` (bloquea correos desechables).
+3. **Authentication → Sign In / Providers → Email:** deja **Confirm email** activado, longitud mínima 8 y "letters and digits". **URL Configuration:** pon la URL de Vercel como *Site URL* y en *Redirect URLs* (necesario para recuperación de contraseña y confirmación).
+4. **Authentication → SMTP:** el correo por defecto de Supabase está muy limitado (pocos mensajes por hora); configura un SMTP propio para que el equipo pueda registrarse y recuperar contraseñas.
+5. **Vercel:** importa el repo (detecta Vite) y añade `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (Project Settings → API → *anon/publishable key*). Opcional: `VITE_PUBLIC_URL` con la URL pública para el logo de la plantilla de correo.
+6. Regístrate tú primero: serás admin. Después los demás se registran y desde la pestaña **Equipo** les asignas empresas o los haces admin.
+
+La anon key es pública por diseño; la seguridad la imponen las políticas RLS. Nunca pongas la `service_role`/secret key en el frontend ni en el repo.
+
+## Estructura
+
+```
+src/App.jsx                  toda la aplicación (un solo fichero a propósito)
+src/supabase.js              cliente de Supabase
+public/                      logos
+supabase/migrations/         esquema de la base de datos (fuente de verdad)
+supabase/seed.sql            datos de prueba SOLO para local
+supabase/config.toml         configuración del Supabase local
+scripts/env-local.mjs        genera .env.development.local
+scripts/smoke-test.mjs       prueba de humo de la base de datos
+```
+
+### Cambiar la base de datos
+
+Siempre con una **migración nueva** (`npm run db:new-migration nombre`), nunca editando una ya aplicada ni desde el SQL Editor sin dejar rastro. Pruébala con `npm run db:reset` y `npm run db:test`. Los estados del pipeline viven en dos sitios que deben coincidir: `ESTADOS` en `src/App.jsx` y el `check` de `empresas.estado` en la migración.
+
+## Problemas frecuentes
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| Página en blanco con error de variables | Falta `.env.development.local` | `npm run db:env` (con Supabase arrancado) |
+| `local:setup` falla al conectar con Docker | Docker Desktop apagado | Ábrelo y espera a que diga *Engine running* |
+| "No se han podido cargar los datos" | Supabase local parado o proyecto remoto pausado | `npm run db:start`, o *Restore project* en Supabase |
+| Registro: "demasiados intentos" | Límite de correos de Supabase | Configura SMTP propio (ver arriba) |
+| Un miembro no puede cambiar nombre/sector/responsable | Es la protección funcionando | Lo hace un admin |

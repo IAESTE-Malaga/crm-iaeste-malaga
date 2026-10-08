@@ -173,8 +173,9 @@ const detalleLegible = (h) =>
 const fecha = (iso) =>
   iso ? new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
-const HOY = () => new Date().toISOString().slice(0, 10)
-const sumarDias = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+// Fechas en hora LOCAL (toISOString daría el día UTC: de 00:00 a 02:00 en España saldría el día anterior)
+const HOY = () => isoDia(new Date())
+const sumarDias = (n) => diaMas(HOY(), n)
 // 1 de septiembre del curso en marcha (si estamos en enero-agosto, el del año anterior)
 const INICIO_CURSO = () => {
   const h = new Date()
@@ -192,8 +193,9 @@ const gmailUrl = (to, asunto = '', cuerpo = '') =>
 // ---------- Plantilla de contacto (equipo de empresas) ----------
 // Se copia al portapapeles como HTML (con formato y logo) y se abre Gmail con destinatario y asunto:
 // el miembro solo tiene que pegar con Ctrl+V. Los adjuntos se añaden a mano en Gmail.
-// El logo se sirve desde /public del propio CRM (crm-iaeste.vercel.app/logo-iaeste-madrid.png).
-const LOGO_URL = 'https://crm-iaeste.vercel.app/logo-iaeste-madrid.png'
+// El logo se sirve desde /public del propio CRM. Tiene que ser una URL pública para que se vea en el
+// correo del destinatario: VITE_PUBLIC_URL (p. ej. https://crm.tudominio.org) o, si no, el dominio actual.
+const LOGO_URL = `${(import.meta.env.VITE_PUBLIC_URL || window.location.origin).replace(/\/$/, '')}/logo-iaeste-madrid.png`
 const AZUL = '#0b3d59'
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 const SEP = '-'.repeat(108)
@@ -241,7 +243,7 @@ const plantillaHtml = (emp, yo) => {
   const legal = 'font-family:Tahoma,Verdana,sans-serif;font-size:11px;line-height:1.7;color:#002e7a;text-align:justify;margin:0'
   const firma = `
 <div style="font-family:Tahoma,Verdana,sans-serif;font-size:13px;color:${AZUL};margin-top:24px">
-  <b>${esc(yo || 'Enrique Rodríguez Palomo')}</b><br>
+  <b>${esc(yo || '(NOMBRE Y APELLIDO)')}</b><br>
   Equipo de Empresas IAESTE TLMA<br><br>
   <b>IAESTE Telecomunicación Madrid</b><br>
   E.T.S.I. Telecomunicación Madrid - Local 206 - L<br>
@@ -324,8 +326,8 @@ const Btn = ({ children, variant = 'primary', ...props }) => {
 
 // ---------- Seguridad de las cuentas ----------
 // Dominios de correo temporal / desechable. Es solo una primera barrera para avisar al momento:
-// el bloqueo de verdad lo hace Supabase con el hook «Before User Created» (auth_seguridad.sql),
-// que usa su propia lista. Si añades un dominio aquí, añádelo también allí.
+// el bloqueo de verdad lo hace Supabase con el hook «Before User Created»
+// (supabase/migrations/*_auth_seguridad.sql, tabla dominios_desechables). Si añades un dominio aquí, añádelo también allí.
 const DOMINIOS_DESECHABLES = new Set([
   'mailinator.com', 'guerrillamail.com', 'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz', 'guerrillamailblock.com', 'sharklasers.com', 'grr.la', 'pokemail.net', 'spam4.me',
   '10minutemail.com', '10minutemail.net', '10minutemail.co.uk', '10minemail.com', '20minutemail.com', 'temp-mail.org', 'temp-mail.io', 'tempmail.com', 'tempmail.net', 'tempmail.dev',
@@ -1291,7 +1293,7 @@ function Actividad({ users, companies }) {
         borradas += (data || []).length
       }
       if (borradas < ids.length) {
-        throw new Error(`Solo se han podido quitar ${borradas} de ${ids.length} movimientos: falta el permiso de borrado del historial en Supabase (ejecuta el SQL de la política para admins).`)
+        throw new Error(`Solo se han podido quitar ${borradas} de ${ids.length} movimientos: falta la política historial_delete_admin en Supabase (ver supabase/migrations).`)
       }
       setInfo(`Hecho: quitados ${borradas} movimientos de ${nombres.length} empresa${nombres.length !== 1 ? 's' : ''} borrada${nombres.length !== 1 ? 's' : ''}.`)
     } catch (e) {
@@ -1462,7 +1464,7 @@ function Ranking({ users, me }) {
   useEffect(() => {
     setDatos(null); setErr('')
     supabase.rpc('ranking_datos', { p_hasta: hasta }).then(({ data, error }) => {
-      if (error) { setErr('No se ha podido cargar el ranking. ¿Se ha ejecutado migracion_ranking.sql en Supabase?'); setDatos({ hist: [], empresas: [] }) }
+      if (error) { setErr(`No se ha podido cargar el ranking: ${error.message}`); setDatos({ hist: [], empresas: [] }) }
       else setDatos(data || { hist: [], empresas: [] })
     })
   }, [hasta])
@@ -1904,7 +1906,7 @@ function exportarEmpresas(lista, nombreDe) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `empresas-iaeste-${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `empresas-iaeste-${HOY()}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -1945,6 +1947,7 @@ export default function App() {
   const [aviso, setAviso] = useState('')
   const [cambiarPass, setCambiarPass] = useState('') // '' | 'normal' | 'recuperacion'
   const [movidas, setMovidas] = useState(null) // ids de empresas con nota o cambio de estado en los últimos SIN_MOVER.dias
+  const [errorCarga, setErrorCarga] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
@@ -1958,17 +1961,22 @@ export default function App() {
 
   const cargar = useCallback(async () => {
     if (!session) return
-    const [{ data: perfiles }, { data: emps }, { data: pracs }] = await Promise.all([
-      supabase.from('profiles').select('*').order('nombre'),
-      supabase.from('empresas').select('*').order('nombre'),
-      // Si la tabla practicas aún no existe, esto devuelve error y simplemente no hay históricas
-      supabase.from('practicas').select('*').order('anio'),
-    ])
-    const porEmpresa = {}
-    for (const p of pracs || []) (porEmpresa[p.empresa_id] ||= []).push(p)
-    setUsers(perfiles || [])
-    setCompanies((emps || []).map((c) => ({ ...c, practicas: porEmpresa[c.id] || [] })))
-    setMe((perfiles || []).find((p) => p.id === session.user.id) || null)
+    try {
+      // Empresas y prácticas paginadas: con más de 1000 filas Supabase cortaría la lista sin avisar
+      const [perfiles, emps, pracs] = await Promise.all([
+        traerTodo(() => supabase.from('profiles').select('*').order('nombre').order('id')),
+        traerTodo(() => supabase.from('empresas').select('*').order('nombre').order('id')),
+        traerTodo(() => supabase.from('practicas').select('*').order('anio').order('id')),
+      ])
+      const porEmpresa = {}
+      for (const p of pracs) (porEmpresa[p.empresa_id] ||= []).push(p)
+      setUsers(perfiles)
+      setCompanies(emps.map((c) => ({ ...c, practicas: porEmpresa[c.id] || [] })))
+      setMe(perfiles.find((p) => p.id === session.user.id) || null)
+      setErrorCarga('')
+    } catch (e) {
+      setErrorCarga(e.message || 'No se ha podido conectar con la base de datos.')
+    }
   }, [session])
 
   useEffect(() => { cargar() }, [cargar])
@@ -2014,7 +2022,17 @@ export default function App() {
   }
   if (!session) return <Auth />
   if (!me) {
-    return <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center text-slate-400 text-sm">Preparando tu perfil…</div>
+    return (
+      <div className="min-h-screen bg-[#f4f6fa] flex flex-col items-center justify-center gap-3 p-4 text-sm text-center">
+        {errorCarga ? (
+          <>
+            <p className="text-rose-600 flex items-center gap-1.5"><AlertCircle className="w-4 h-4 shrink-0" />No se han podido cargar los datos: {errorCarga}</p>
+            <Btn onClick={cargar}>Reintentar</Btn>
+          </>
+        ) : <p className="text-slate-400">Preparando tu perfil…</p>}
+        <button onClick={() => supabase.auth.signOut()} className="text-xs text-slate-500 hover:underline">Salir</button>
+      </div>
+    )
   }
 
   const isAdmin = me.rol === 'admin'
@@ -2105,6 +2123,13 @@ export default function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6">
+        {errorCarga && (
+          <div className="flex items-center gap-2.5 mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <p className="flex-1">No se han podido actualizar los datos: {errorCarga}</p>
+            <button onClick={cargar} className="text-xs font-semibold hover:underline">Reintentar</button>
+          </div>
+        )}
         {tab === 'ranking' ? (
           <Ranking users={users} me={me} />
         ) : tab === 'seguimiento' && isAdmin ? (
