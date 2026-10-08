@@ -27,6 +27,8 @@ npm run local:setup     # arranca Supabase, aplica migraciones + datos de prueba
 npm run dev             # http://localhost:5173
 ```
 
+**Todo de una vez:** `npm run local` instala lo que falte, arranca Supabase, genera los `.env`, y lanza el servicio de correo y la app. `Ctrl+C` lo apaga todo (con `--keep-db` deja Supabase encendido; `npm run local:stop` lo apaga a mano).
+
 | Servicio | URL |
 |---|---|
 | App | http://localhost:5173 |

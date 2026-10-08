@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "local": "node scripts/local-all.mjs",
+    "local:stop": "supabase stop",
     "local:setup": "supabase start && npm run db:env",
     "db:start": "supabase start",
     "db:stop": "supabase stop",

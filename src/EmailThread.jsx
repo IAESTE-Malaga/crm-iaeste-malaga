@@ -87,8 +87,8 @@ export default function EmailThread({ empresa }) {
   }
 
   return (
-    <div className="pt-2 border-t border-slate-100">
-      <div className="flex items-center justify-between mb-2">
+    <div className="pt-5 border-t border-slate-100">
+      <div className="flex items-center justify-between mb-3">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
           <Mail className="w-3.5 h-3.5" />Correos{correos?.length ? ` · ${correos.length}` : ''}
         </p>
@@ -107,9 +107,9 @@ export default function EmailThread({ empresa }) {
             const salida = c.direccion === 'saliente'
             return (
               <li key={c.id} className={`flex ${salida ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[88%] rounded-xl border px-3 py-2 text-xs ${salida ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}>
+                <div className={`max-w-[88%] rounded-2xl border px-3.5 py-2.5 text-xs ${salida ? 'bg-brand-50 border-brand-200' : 'bg-white border-slate-200'}`}>
                   <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                    {salida ? <ArrowUpRight className="w-3 h-3 text-blue-600" /> : <ArrowDownLeft className="w-3 h-3 text-emerald-600" />}
+                    {salida ? <ArrowUpRight className="w-3 h-3 text-brand-500" /> : <ArrowDownLeft className="w-3 h-3 text-emerald-600" />}
                     <span className="truncate">{salida ? `Enviado a ${c.destinatario}` : c.remitente}</span>
                     <span className="text-slate-400 shrink-0">· {cuando(c.enviado_en)}</span>
                   </div>
@@ -130,22 +130,22 @@ export default function EmailThread({ empresa }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {opciones.length > 1 || (opciones.length === 1 && opciones[0] !== para) ? (
               <select value={para} onChange={(e) => { setPara(e.target.value); setTocado(true) }}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
                 {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             ) : (
               <p className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-600 truncate">{para || 'Sin email en la ficha'}</p>
             )}
             <input value={asunto} onChange={(e) => { setAsunto(e.target.value); setTocado(true) }} maxLength={200} placeholder="Asunto"
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30" />
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500" />
           </div>
           <textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={4} maxLength={20000} placeholder="Escribe tu respuesta…"
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }}
-            className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30 resize-y" />
+            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 resize-y" />
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] text-slate-400">Se envía desde el buzón compartido de IAESTE · Ctrl+Enter para enviar</p>
             <button onClick={enviar} disabled={enviando || !para || !cuerpo.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0e2d4d] hover:bg-[#163d63] text-white text-xs font-semibold disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-900 hover:bg-brand-700 text-white text-xs font-semibold disabled:opacity-50">
               <Send className="w-3.5 h-3.5" />{enviando ? 'Enviando…' : 'Enviar'}
             </button>
           </div>

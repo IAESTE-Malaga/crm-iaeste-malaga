@@ -4,7 +4,7 @@ import EmailThread from './EmailThread'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle,
+  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -52,7 +52,7 @@ const AVISO_POCAS = 2
 
 // Acciones del historial
 const ACCIONES = {
-  alta: { label: 'Alta', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  alta: { label: 'Alta', color: 'bg-brand-50 text-brand-600 border-brand-200' },
   estado: { label: 'Estado', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   nota: { label: 'Nota', color: 'bg-slate-100 text-slate-600 border-slate-200' },
   agenda: { label: 'Agenda', color: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -291,7 +291,7 @@ const copiarPlantilla = async (emp, yo) => {
 const Badge = ({ estadoId }) => {
   const e = estadoDe(estadoId)
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${e.color}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap ${e.color}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${e.dot}`} />
       {e.label}
     </span>
@@ -301,29 +301,105 @@ const Badge = ({ estadoId }) => {
 const Input = (props) => (
   <input
     {...props}
-    className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30 focus:border-[#0e2d4d] ${props.className || ''}`}
+    className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 ${props.className || ''}`}
   />
 )
 
 const Label = ({ children }) => (
-  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{children}</label>
+  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{children}</label>
 )
 
 const Btn = ({ children, variant = 'primary', ...props }) => {
   const styles = {
-    primary: 'bg-[#0e2d4d] hover:bg-[#163d63] text-white shadow-sm',
-    ghost: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300',
+    primary: 'bg-brand-900 hover:bg-brand-700 text-white shadow-sm shadow-brand-900/20 active:scale-[0.98]',
+    ghost: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200',
     danger: 'bg-white hover:bg-rose-50 text-rose-600 border border-rose-200',
   }
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-colors disabled:opacity-50 ${styles[variant]} ${props.className || ''}`}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${styles[variant]} ${props.className || ''}`}
     >
       {children}
     </button>
   )
 }
+
+// Botón pequeño para barras de herramientas (exportar, limpiar…)
+const miniBtn = 'px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-200 transition inline-flex items-center gap-1.5'
+// Chip de filtro de periodo
+const chipPeriodo = (on) => `px-3 py-1.5 rounded-lg border text-xs transition ${on ? 'border-brand-500 bg-brand-50 text-brand-700 font-semibold' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`
+
+// Avatar con la inicial; el color sale del nombre para que cada persona tenga el suyo
+const AVATAR_COLORES = ['bg-sky-100 text-sky-700', 'bg-violet-100 text-violet-700', 'bg-emerald-100 text-emerald-700', 'bg-amber-100 text-amber-700', 'bg-rose-100 text-rose-700', 'bg-teal-100 text-teal-700', 'bg-indigo-100 text-indigo-700', 'bg-fuchsia-100 text-fuchsia-700']
+const Avatar = ({ nombre = '?', size = 'md', className = '' }) => {
+  const n = String(nombre || '?').trim()
+  const color = AVATAR_COLORES[[...n].reduce((a, ch) => a + ch.charCodeAt(0), 0) % AVATAR_COLORES.length]
+  const tam = size === 'sm' ? 'w-7 h-7 text-xs' : size === 'lg' ? 'w-11 h-11 text-base' : 'w-9 h-9 text-sm'
+  return <span className={`${tam} ${color} ${className} rounded-full inline-flex items-center justify-center font-bold shrink-0 select-none`}>{n.charAt(0).toUpperCase()}</span>
+}
+
+// Contenedor de diálogos: centrado en móvil como hoja inferior, y en escritorio como panel lateral (panel) o diálogo (dialogo)
+function Modal({ children, onClose, ancho = 'max-w-lg', panel = false }) {
+  useEffect(() => {
+    if (!onClose) return
+    const alTeclear = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', alTeclear)
+    return () => window.removeEventListener('keydown', alTeclear)
+  }, [onClose])
+  return (
+    <div className={`fixed inset-0 bg-brand-950/50 backdrop-blur-[2px] animate-fade-in flex z-50 ${panel ? 'items-end sm:items-stretch sm:justify-end' : 'items-end sm:items-center justify-center p-0 sm:p-4'}`} onClick={onClose}>
+      <div
+        className={`w-full ${ancho} bg-white shadow-pop overflow-y-auto scroll-thin ${
+          panel ? 'rounded-t-3xl sm:rounded-none sm:rounded-l-3xl max-h-[92vh] sm:max-h-none animate-rise sm:animate-slide-in' : 'rounded-t-3xl sm:rounded-3xl max-h-[92vh] animate-rise'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ModalHead({ children, onClose, sub }) {
+  return (
+    <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-10">
+      <div className="min-w-0">
+        <h2 className="font-bold text-slate-900 text-lg leading-snug break-words">{children}</h2>
+        {sub}
+      </div>
+      {onClose && <button onClick={onClose} aria-label="Cerrar" className="p-1.5 -mr-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"><X className="w-5 h-5" /></button>}
+    </div>
+  )
+}
+
+// Aviso de ancho completo (info / éxito / alerta / error)
+const AVISO_TONOS = {
+  info: 'border-brand-200 bg-brand-50 text-brand-900',
+  ok: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  warn: 'border-amber-300 bg-amber-50 text-amber-900',
+  error: 'border-rose-200 bg-rose-50 text-rose-800',
+  neutral: 'border-slate-200 bg-white text-slate-600',
+}
+const Aviso = ({ tono = 'info', icono: Icono, children, className = '' }) => (
+  <div className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${AVISO_TONOS[tono]} ${className}`}>
+    {Icono && <Icono className="w-4 h-4 mt-0.5 shrink-0 opacity-80" />}
+    <div className="min-w-0 flex-1">{children}</div>
+  </div>
+)
+
+const Cargando = ({ texto = 'Cargando…' }) => (
+  <p className="flex items-center justify-center gap-2.5 text-sm text-slate-400 py-10">
+    <span className="w-4 h-4 rounded-full border-2 border-slate-200 border-t-brand-500 animate-spin" />{texto}
+  </p>
+)
+
+const Vacio = ({ icono: Icono = Inbox, children }) => (
+  <div className="card p-12 text-center text-sm text-slate-500 flex flex-col items-center gap-3">
+    <span className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center"><Icono className="w-6 h-6" /></span>
+    <p className="max-w-sm">{children}</p>
+  </div>
+)
 
 // ---------- Seguridad de las cuentas ----------
 // Dominios de correo temporal / desechable. Es solo una primera barrera para avisar al momento:
@@ -412,12 +488,12 @@ function CambiarContrasena({ recuperacion, onClose }) {
     onClose()
   }
   return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={recuperacion ? undefined : cerrar}>
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <h2 className="font-bold text-slate-900 flex items-center gap-2"><KeyRound className="w-4 h-4" />{recuperacion ? 'Elige una contraseña nueva' : 'Cambiar mi contraseña'}</h2>
+    <Modal ancho="max-w-sm" onClose={recuperacion ? undefined : cerrar}>
+      <div className="p-6 space-y-3">
+        <h2 className="font-bold text-slate-900 flex items-center gap-2"><span className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center"><KeyRound className="w-4 h-4" /></span>{recuperacion ? 'Elige una contraseña nueva' : 'Cambiar mi contraseña'}</h2>
         {ok ? (
           <>
-            <p className="text-sm text-emerald-700">Contraseña cambiada ✓ La próxima vez entra con la nueva.</p>
+            <Aviso tono="ok">Contraseña cambiada ✓ La próxima vez entra con la nueva.</Aviso>
             <Btn onClick={onClose} className="w-full">Cerrar</Btn>
           </>
         ) : (
@@ -425,7 +501,7 @@ function CambiarContrasena({ recuperacion, onClose }) {
             <p className="text-xs text-slate-500">Mínimo {PASS_MIN} caracteres, con letras y números.</p>
             <div><Label>Contraseña nueva</Label><Input type="password" autoComplete="new-password" autoFocus value={p1} onChange={(e) => setP1(e.target.value)} /></div>
             <div><Label>Repítela</Label><Input type="password" autoComplete="new-password" value={p2} onChange={(e) => setP2(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && guardar()} /></div>
-            {err && <p className="text-sm text-rose-600">{err}</p>}
+            {err && <Aviso tono="error">{err}</Aviso>}
             <div className="flex gap-2 justify-end">
               <Btn variant="ghost" onClick={cerrar}>{recuperacion ? 'Cancelar y salir' : 'Cancelar'}</Btn>
               <Btn onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</Btn>
@@ -433,7 +509,7 @@ function CambiarContrasena({ recuperacion, onClose }) {
           </>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -522,10 +598,26 @@ function Auth() {
   const alPulsarEnter = (ev) => ev.key === 'Enter' && (modo === 'olvido' ? recuperar() : enviar())
 
   return (
-    <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-blue-700 flex items-center justify-center">
+    <div className="min-h-screen bg-surface grid lg:grid-cols-[1.05fr_1fr]">
+      <aside className="hidden lg:flex flex-col justify-between relative overflow-hidden bg-brand-900 text-white p-12">
+        <div className="absolute -top-32 -right-32 w-[28rem] h-[28rem] rounded-full bg-brand-500/25 blur-3xl" />
+        <div className="absolute -bottom-40 -left-24 w-[26rem] h-[26rem] rounded-full bg-brand-300/15 blur-3xl" />
+        <div className="relative"><LogoIaeste /></div>
+        <div className="relative max-w-md">
+          <h2 className="text-4xl font-extrabold leading-tight tracking-tight">Cada empresa, cada contacto, cada beca.</h2>
+          <p className="mt-4 text-white/65 leading-relaxed">El CRM del equipo de empresas de IAESTE Madrid: reparte empresas, haz seguimiento y sube en el ranking.</p>
+          <ul className="mt-8 space-y-3 text-sm text-white/80">
+            {[[Building2, 'Todas las empresas y su estado en un solo sitio'], [CalendarClock, 'Recordatorios de próximos contactos'], [Trophy, 'Puntos y ranking para todo el equipo']].map(([I, t]) => (
+              <li key={t} className="flex items-center gap-3"><span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center"><I className="w-4 h-4" /></span>{t}</li>
+            ))}
+          </ul>
+        </div>
+        <p className="relative text-xs text-white/40">IAESTE Madrid · Telecomunicación</p>
+      </aside>
+      <div className="flex items-center justify-center p-4 sm:p-8">
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-3 mb-8 lg:hidden">
+          <div className="w-11 h-11 rounded-2xl bg-brand-900 flex items-center justify-center shadow-nav">
             <Building2 className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -533,18 +625,20 @@ function Auth() {
             <p className="text-xs text-slate-500">Gestión de empresas</p>
           </div>
         </div>
+        <h1 className="hidden lg:block text-2xl font-extrabold tracking-tight text-slate-900 mb-1">{modo === 'registro' ? 'Crea tu cuenta' : modo === 'olvido' ? 'Recupera el acceso' : 'Bienvenido de nuevo'}</h1>
+        <p className="hidden lg:block text-sm text-slate-500 mb-6">{modo === 'registro' ? 'Únete al equipo de empresas.' : modo === 'olvido' ? 'Te enviaremos un enlace por correo.' : 'Entra para ver tus empresas.'}</p>
         {modo === 'olvido' ? (
           <div className="mb-5">
             <h2 className="font-semibold text-slate-900">¿Has olvidado tu contraseña?</h2>
             <p className="text-xs text-slate-500 mt-1">Escribe el email de tu cuenta y te enviaremos un enlace para elegir una nueva.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 bg-slate-100 rounded-lg p-0.5 mb-5">
+          <div className="grid grid-cols-2 bg-slate-100 rounded-xl p-1 mb-5">
             {[['login', 'Entrar'], ['registro', 'Crear cuenta']].map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => cambiarModo(id)}
-                className={`py-1.5 rounded-md text-sm font-medium ${modo === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
+                className={`py-2 rounded-lg text-sm font-semibold transition ${modo === id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {label}
               </button>
@@ -570,19 +664,19 @@ function Auth() {
               <p className="text-[11px] text-slate-400 -mt-1">Mínimo {PASS_MIN} caracteres, con letras y números.</p>
             </>
           )}
-          {err && <p className="text-sm text-rose-600 flex items-start gap-1"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />{err}</p>}
+          {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
           {sinConfirmar && (
-            <button onClick={reenviarConfirmacion} disabled={busy} className="w-full text-center text-xs font-medium text-blue-700 hover:underline">
+            <button onClick={reenviarConfirmacion} disabled={busy} className="w-full text-center text-xs font-medium text-brand-600 hover:underline">
               Reenviar el email de confirmación
             </button>
           )}
-          {info && <p className="text-sm text-emerald-700">{info}</p>}
+          {info && <Aviso tono="ok">{info}</Aviso>}
           {modo === 'olvido' ? (
             <>
               <Btn onClick={recuperar} disabled={busy} className="w-full">
                 <Mail className="w-4 h-4" />{busy ? 'Un momento…' : 'Enviar enlace'}
               </Btn>
-              <button onClick={() => cambiarModo('login')} className="w-full text-center text-xs text-slate-500 hover:text-[#0e2d4d] hover:underline">
+              <button onClick={() => cambiarModo('login')} className="w-full text-center text-xs text-slate-500 hover:text-brand-900 hover:underline">
                 Volver a entrar
               </button>
             </>
@@ -593,13 +687,14 @@ function Auth() {
                 {busy ? 'Un momento…' : modo === 'login' ? 'Entrar' : 'Crear cuenta'}
               </Btn>
               {modo === 'login' && (
-                <button onClick={() => cambiarModo('olvido')} disabled={busy} className="w-full text-center text-xs text-slate-500 hover:text-[#0e2d4d] hover:underline">
+                <button onClick={() => cambiarModo('olvido')} disabled={busy} className="w-full text-center text-xs text-slate-500 hover:text-brand-900 hover:underline">
                   ¿Has olvidado tu contraseña?
                 </button>
               )}
             </>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
@@ -624,7 +719,7 @@ function AccionesContacto({ emp, yo, onEmail }) {
       <div className="flex flex-wrap gap-2">
         {emp.telefono && (
           <a href={`tel:${tel}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50/80">
             <Phone className="w-3.5 h-3.5" />Llamar
           </a>
         )}
@@ -632,13 +727,13 @@ function AccionesContacto({ emp, yo, onEmail }) {
           <>
             <a href={gmailUrl(emp.email)} target="_blank" rel="noopener noreferrer"
               onClick={() => onEmail?.('email')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50/80">
               <Mail className="w-3.5 h-3.5" />Email
             </a>
             <a href={gmailUrl(emp.email, asuntoPlantilla(emp))} target="_blank" rel="noopener noreferrer"
               title="Copia la plantilla con formato y abre Gmail: pega con Ctrl+V en el cuerpo"
               onClick={usarPlantilla}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-200 bg-brand-50 text-xs font-medium text-brand-600 hover:bg-brand-100">
               <Send className="w-3.5 h-3.5" />Plantilla de contacto
             </a>
           </>
@@ -814,7 +909,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
       <div><Label>Dirección</Label><Input value={f.direccion || ''} onChange={(e) => set('direccion', e.target.value)} placeholder="Calle, número, ciudad" /></div>
       {f.direccion && (
         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}`} target="_blank" rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-blue-700 hover:underline"><MapPin className="w-3.5 h-3.5" />Ver en el mapa</a>
+          className="inline-flex items-center gap-1.5 text-xs text-brand-600 hover:underline"><MapPin className="w-3.5 h-3.5" />Ver en el mapa</a>
       )}
       <AccionesContacto emp={f} yo={me.nombre} onEmail={alEnviarCorreo} />
     </>
@@ -824,15 +919,11 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
   if (!isAdmin && !nueva && empresa.responsable !== me.id) {
     const dato = (Icono, v, href) => v && (
       <p className="flex items-start gap-2"><Icono className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
-        {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline break-all">{v}</a> : <span className="break-words">{v}</span>}</p>
+        {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-all">{v}</a> : <span className="break-words">{v}</span>}</p>
     )
     return (
-      <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
-        <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
-            <h2 className="font-bold text-slate-900">{f.nombre}</h2>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-5 h-5" /></button>
-          </div>
+      <Modal panel onClose={onClose}>
+          <ModalHead onClose={onClose}>{f.nombre}</ModalHead>
           <div className="p-6 space-y-4 text-sm text-slate-700">
             <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
               <span className="flex items-center gap-2"><User className="w-4 h-4 text-slate-400" />
@@ -857,19 +948,14 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               Solo puede editarla {empresa.responsable ? 'su responsable' : 'quien la tenga asignada'} o un admin. Si quieres llevarla tú, pídeselo a un admin.
             </p>
           </div>
-        </div>
-      </div>
+      </Modal>
     )
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
-          <h2 className="font-bold text-slate-900">{nueva ? 'Nueva empresa' : f.nombre}</h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="p-6 space-y-4">
+    <Modal panel ancho="max-w-xl" onClose={onClose}>
+        <ModalHead onClose={onClose} sub={!nueva && <div className="mt-1.5"><Badge estadoId={empresa.estado} /></div>}>{nueva ? 'Nueva empresa' : empresa.nombre}</ModalHead>
+        <div className="p-6 space-y-5">
           {practicas.length > 0 && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="flex items-start gap-2">
@@ -911,7 +997,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                   <select
                     value={f.responsable || ''}
                     onChange={(e) => set('responsable', e.target.value || null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/25"
                   >
                     <option value="">Sin asignar</option>
                     {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
@@ -941,8 +1027,8 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 <button
                   key={e.id}
                   onClick={() => set('estado', e.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    f.estado === e.id ? `${e.color} ring-2 ring-offset-1 ring-[#0e2d4d]` : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                    f.estado === e.id ? `${e.color} ring-2 ring-offset-1 ring-brand-900` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   {e.label}
@@ -979,27 +1065,27 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                 type="date"
                 value={f.proximo_contacto || ''}
                 onChange={(e) => set('proximo_contacto', e.target.value || null)}
-                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30"
+                className="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/25"
               />
               {[['+1 sem', 7], ['+2 sem', 14], ['+1 mes', 30]].map(([t, n]) => (
                 <button key={t} onClick={() => set('proximo_contacto', sumarDias(n))}
-                  className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs text-slate-600 hover:bg-slate-50">{t}</button>
+                  className="px-2.5 py-1 rounded-xl border border-slate-200 text-xs text-slate-600 hover:bg-slate-50/80">{t}</button>
               ))}
               {f.proximo_contacto && (
                 <button onClick={() => set('proximo_contacto', null)}
-                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs text-slate-400 hover:bg-slate-50">Quitar</button>
+                  className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs text-slate-400 hover:bg-slate-50/80">Quitar</button>
               )}
             </div>
           </div>
           {!nueva && <EmailThread empresa={empresa} />}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2">
+          <div className="pt-5 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 <History className="w-3.5 h-3.5" />Seguimiento
               </p>
               {!abrirNota && !estadoCambiado && (
                 <button onClick={() => setAbrirNota(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-brand-200 bg-brand-50 text-xs font-medium text-brand-600 hover:bg-brand-100">
                   <Plus className="w-3.5 h-3.5" />Añadir seguimiento
                 </button>
               )}
@@ -1018,8 +1104,8 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
                   rows={3}
                   maxLength={500}
                   placeholder="Llamada del 3/7: interesados, enviar propuesta…"
-                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30 resize-none ${
-                    notaObligatoria && !nuevaNota.trim() ? 'border-rose-300' : 'border-slate-300'
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/25 resize-none ${
+                    notaObligatoria && !nuevaNota.trim() ? 'border-rose-300' : 'border-slate-200'
                   }`}
                 />
                 <p className="text-[11px] text-slate-400 text-right">{nuevaNota.length}/500</p>
@@ -1063,16 +1149,15 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
           {f.actualizado && !nueva && (
             <p className="text-xs text-slate-400">Última actualización: {fecha(f.actualizado)}{f.actualizado_por ? ` · ${f.actualizado_por}` : ''}</p>
           )}
-          {err && <p className="text-sm text-rose-600">{err}</p>}
-          <div className="flex items-center justify-between pt-2">
+          {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+          <div className="flex items-center justify-between py-3 -mx-6 px-6 -mb-6 sticky bottom-0 bg-white/90 backdrop-blur border-t border-slate-100">
             {isAdmin && !nueva ? (
               <Btn variant="danger" onClick={eliminar}><Trash2 className="w-4 h-4" />Eliminar</Btn>
             ) : <span />}
             <Btn onClick={() => guardar()} disabled={busy || !!cifDup}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -1137,7 +1222,7 @@ function GraficaEmpresas({ users, companies }) {
 
       g.fillStyle = '#f1f5f9'
       g.fillRect(xBar, y + 2, anchoBar, 20)
-      g.fillStyle = d.id === 'na' ? '#cbd5e1' : '#2563eb'
+      g.fillStyle = d.id === 'na' ? '#cbd5e1' : '#2f6bb8'
       g.fillRect(xBar, y + 2, Math.max(2, (d.n / max) * anchoBar), 20)
 
       g.fillStyle = '#0f172a'
@@ -1151,15 +1236,15 @@ function GraficaEmpresas({ users, companies }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-6">
+    <div className="card p-6">
       <div className="flex items-baseline justify-between mb-5 gap-3 flex-wrap">
         <h3 className="font-bold text-slate-900">Empresas por persona</h3>
         <div className="flex items-center gap-2">
           <span className="text-sm text-slate-500 mr-1">{companies.length} en total</span>
-          <button onClick={exportarPNG} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+          <button onClick={exportarPNG} className="px-2.5 py-1 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50/80 inline-flex items-center gap-1">
             <Download className="w-3.5 h-3.5" />PNG
           </button>
-          <button onClick={exportarCSV} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+          <button onClick={exportarCSV} className="px-2.5 py-1 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50/80 inline-flex items-center gap-1">
             <Download className="w-3.5 h-3.5" />CSV
           </button>
         </div>
@@ -1172,7 +1257,7 @@ function GraficaEmpresas({ users, companies }) {
             </span>
             <div className="flex-1 h-6 bg-slate-100 rounded-md overflow-hidden">
               <div
-                className={`h-full rounded-md ${d.id === 'na' ? 'bg-slate-300' : 'bg-blue-600'}`}
+                className={`h-full rounded-md ${d.id === 'na' ? 'bg-slate-300' : 'bg-brand-500'}`}
                 style={{ width: `${(d.n / max) * 100}%` }}
               />
             </div>
@@ -1325,14 +1410,14 @@ function Actividad({ users, companies }) {
     <button
       key={label}
       onClick={() => { setDesde(d); setHasta(HOY()) }}
-      className={`px-2.5 py-1 rounded-lg border text-xs ${desde === d && hasta === HOY() ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+      className={chipPeriodo(desde === d && hasta === HOY())}
     >
       {label}
     </button>
   )
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-6">
+    <div className="card p-6">
       <div className="flex items-baseline justify-between mb-4 gap-3 flex-wrap">
         <h3 className="font-bold text-slate-900 flex items-center gap-1.5">
           <Trophy className="w-4 h-4 text-slate-400" />Puntos del equipo
@@ -1345,13 +1430,13 @@ function Actividad({ users, companies }) {
             className={`px-2.5 py-1 rounded-lg border text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50 ${
               nEmpresasBorradas
                 ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50/80'
             }`}
           >
             <Trash2 className="w-3.5 h-3.5" />
             {limpiando ? 'Limpiando…' : `Quitar empresas borradas${nEmpresasBorradas ? ` · ${nEmpresasBorradas}` : ''}`}
           </button>
-          <button onClick={exportar} className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1">
+          <button onClick={exportar} className="px-2.5 py-1 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50/80 inline-flex items-center gap-1">
             <Download className="w-3.5 h-3.5" />CSV
           </button>
         </div>
@@ -1359,18 +1444,18 @@ function Actividad({ users, companies }) {
 
       <div className="flex flex-wrap items-center gap-2 mb-5">
         <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)}
-          className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-sm bg-white" />
+          className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-sm bg-white" />
         <span className="text-slate-400 text-sm">a</span>
         <input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)}
-          className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-sm bg-white" />
+          className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-sm bg-white" />
         <span className="w-px h-5 bg-slate-200 mx-1" />
         {atajo('Curso', INICIO_CURSO())}
         {atajo('30 días', sumarDias(-30))}
         {atajo('7 días', sumarDias(-7))}
       </div>
 
-      {err && <p className="text-sm text-rose-600 mb-3">{err}</p>}
-      {info && <p className="text-sm text-emerald-700 mb-3">{info}</p>}
+      {err && <Aviso tono="error" icono={AlertCircle} className="mb-3">{err}</Aviso>}
+      {info && <Aviso tono="ok" className="mb-3">{info}</Aviso>}
       {nEmpresasBorradas > 0 && !limpiando && (
         <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 flex items-start gap-1.5">
           <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" />
@@ -1379,7 +1464,7 @@ function Actividad({ users, companies }) {
         </p>
       )}
       {todo === null ? (
-        <p className="text-sm text-slate-400">Cargando…</p>
+        <Cargando />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1398,7 +1483,7 @@ function Actividad({ users, companies }) {
                 <Fragment key={d.id}>
                   <tr
                     onClick={() => setAbierto(abierto === d.id ? '' : d.id)}
-                    className="border-t border-slate-100 text-right tabular-nums cursor-pointer hover:bg-slate-50"
+                    className="border-t border-slate-100 text-right tabular-nums cursor-pointer hover:bg-slate-50/80"
                   >
                     <td className="text-left py-2 text-slate-700 flex items-center gap-1">
                       <ChevronRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${abierto === d.id ? 'rotate-90' : ''}`} />
@@ -1479,17 +1564,17 @@ function Ranking({ users, me }) {
   const puesto = (i) => (i > 0 && lista[i - 1].puntos === lista[i].puntos ? puesto(i - 1) : i + 1)
   const max = Math.max(1, ...lista.map((d) => d.puntos))
   const yo = lista.findIndex((d) => d.id === me.id)
-  const medalla = ['bg-amber-400 text-amber-950', 'bg-slate-300 text-slate-800', 'bg-orange-300 text-orange-950']
+  const medalla = ['bg-amber-400 text-amber-950 ring-4 ring-amber-100', 'bg-slate-300 text-slate-800 ring-4 ring-slate-100', 'bg-orange-300 text-orange-950 ring-4 ring-orange-100']
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <div className="bg-[#0e2d4d] rounded-2xl p-5 text-white shadow-[0_4px_16px_rgba(13,43,69,0.18)]">
+      <div className="relative overflow-hidden bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600 rounded-2xl p-6 text-white shadow-nav"><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/10 blur-2xl" />
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-lg font-bold flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-300" />Ranking del equipo</h2>
           <div className="flex gap-1 bg-white/10 rounded-full p-1">
             {[['mes', 'Este mes'], ['curso', 'Curso'], ['7', '7 días']].map(([id, label]) => (
               <button key={id} onClick={() => setPeriodo(id)}
-                className={`px-3 py-1 rounded-full text-sm transition-colors ${periodo === id ? 'bg-white text-[#0e2d4d] font-bold' : 'text-white/80 hover:bg-white/[0.08]'}`}>
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${periodo === id ? 'bg-white text-brand-900 font-bold' : 'text-white/80 hover:bg-white/[0.08]'}`}>
                 {label}
               </button>
             ))}
@@ -1503,20 +1588,20 @@ function Ranking({ users, me }) {
         )}
       </div>
 
-      {err && <p className="text-sm text-rose-600">{err}</p>}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden divide-y divide-slate-100">
+      {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+      <div className="card overflow-hidden divide-y divide-slate-100">
         {datos === null ? (
-          <p className="p-6 text-sm text-slate-400">Cargando…</p>
+          <Cargando />
         ) : lista.map((d, i) => {
           const p = puesto(i)
           const mio = d.id === me.id
           return (
-            <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${mio ? 'bg-blue-50/60' : ''}`}>
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${p <= 3 && d.puntos > 0 ? medalla[p - 1] : 'bg-slate-100 text-slate-500'}`}>{p}</span>
+            <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${mio ? 'bg-brand-50/60' : ''}`}>
+              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${p <= 3 && d.puntos > 0 ? medalla[p - 1] : 'bg-slate-100 text-slate-500'}`}>{p}</span>
               <div className="flex-1 min-w-0">
-                <p className={`text-sm truncate ${mio ? 'font-bold text-[#0e2d4d]' : 'font-medium text-slate-800'}`}>{d.nombre}{mio && ' (tú)'}</p>
+                <p className={`text-sm truncate ${mio ? 'font-bold text-brand-900' : 'font-medium text-slate-800'}`}>{d.nombre}{mio && ' (tú)'}</p>
                 <div className="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                  <div className="h-full bg-[#0e2d4d] rounded-full" style={{ width: `${(d.puntos / max) * 100}%` }} />
+                  <div className="h-full bg-brand-900 rounded-full" style={{ width: `${(d.puntos / max) * 100}%` }} />
                 </div>
               </div>
               {d.becas > 0 && <span className="hidden sm:inline text-xs text-emerald-700 font-medium shrink-0">{d.becas} beca{d.becas !== 1 ? 's' : ''}</span>}
@@ -1603,13 +1688,13 @@ function Equipo({ users, companies, me, onChanged }) {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-900">
+      <Aviso tono="info" icono={UserPlus}>
         Para incorporar a alguien: pídele que se <strong>registre</strong> en esta misma página. Aparecerá aquí
         como miembro y podrás asignarle empresas o hacerle admin. Si alguien olvida su contraseña,
         pulsa la llave junto a su nombre para ponerle una temporal. Para eliminar cuentas, usa el panel de Supabase (Authentication → Users).
-      </div>
-      {err && <p className="text-sm text-rose-600">{err}</p>}
-      {passOk && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{passOk}</p>}
+      </Aviso>
+      {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+      {passOk && <Aviso tono="ok">{passOk}</Aviso>}
 
       <GraficaEmpresas users={users} companies={companies} />
 
@@ -1620,17 +1705,15 @@ function Equipo({ users, companies, me, onChanged }) {
         El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona y <strong>−{LOTE}</strong> le quita {LOTE} de las que aún tiene sin contactar (vuelven al bote).
       </p>
 
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden">
+      <div className="card overflow-hidden">
         {users.map((u) => (
-          <div key={u.id} className="flex items-center justify-between px-6 py-4 border-b border-slate-100 last:border-0">
+          <div key={u.id} className="flex items-center justify-between gap-3 flex-wrap px-5 sm:px-6 py-4 border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
             <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${u.rol === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
-                {u.nombre[0]?.toUpperCase()}
-              </div>
+              <Avatar nombre={u.nombre} size="lg" />
               <div>
                 <p className="text-sm font-medium text-slate-900 flex items-center gap-1.5">
                   {u.nombre}
-                  {u.rol === 'admin' && <Shield className="w-3.5 h-3.5 text-blue-600" />}
+                  {u.rol === 'admin' && <Shield className="w-3.5 h-3.5 text-brand-500" />}
                   {u.id === me.id && <span className="text-xs text-slate-400">(tú)</span>}
                 </p>
                 <p className="text-xs text-slate-500">
@@ -1649,7 +1732,7 @@ function Equipo({ users, companies, me, onChanged }) {
                 className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium inline-flex items-center gap-1 disabled:opacity-40 ${
                   sinContactar(u.id) === 0
                     ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                    : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50/80'
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />+{LOTE}
@@ -1658,13 +1741,13 @@ function Equipo({ users, companies, me, onChanged }) {
                 onClick={() => quitarLote(u)}
                 disabled={asignando === u.id || quitables(u.id).length === 0}
                 title={`Quitarle ${LOTE} empresas sin contactar y devolverlas al bote común`}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-medium inline-flex items-center gap-1 disabled:opacity-40"
+                className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50/80 text-xs font-medium inline-flex items-center gap-1 disabled:opacity-40"
               >
                 <UserMinus className="w-3.5 h-3.5" />−{LOTE}
               </button>
               {u.id !== me.id && (
                 <button onClick={() => { setPassDe(u); setPassTmp(''); setPassOk('') }} title="Ponerle una contraseña temporal"
-                  className="p-1.5 rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50">
+                  className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50/80">
                   <KeyRound className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -1672,7 +1755,7 @@ function Equipo({ users, companies, me, onChanged }) {
               value={u.rol}
               onChange={(e) => cambiarRol(u, e.target.value)}
               disabled={u.id === me.id}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm bg-white disabled:opacity-50"
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-sm bg-white disabled:opacity-50"
             >
               <option value="miembro">Miembro</option>
               <option value="admin">Admin</option>
@@ -1683,8 +1766,8 @@ function Equipo({ users, companies, me, onChanged }) {
       </div>
 
       {passDe && (
-        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50" onClick={() => setPassDe(null)}>
-          <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <Modal ancho="max-w-sm" onClose={() => setPassDe(null)}>
+          <div className="p-6 space-y-3">
             <h2 className="font-bold text-slate-900">Contraseña temporal para {passDe.nombre}</h2>
             <p className="text-xs text-slate-500">Su contraseña actual dejará de valer. Pásale la temporal por privado y pídele que la cambie al entrar.</p>
             <Input value={passTmp} autoFocus onChange={(e) => setPassTmp(e.target.value)} placeholder={`Mínimo ${PASS_MIN} caracteres, con letras y números`} onKeyDown={(e) => e.key === 'Enter' && ponerTemporal()} />
@@ -1693,7 +1776,7 @@ function Equipo({ users, companies, me, onChanged }) {
               <Btn onClick={ponerTemporal}>Cambiar contraseña</Btn>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   )
@@ -1815,47 +1898,47 @@ function Seguimiento({ users, companies, version, onAbrir }) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-5">
+      <div className="card p-5">
         <h2 className="font-bold text-slate-900 flex items-center gap-1.5 mb-3">
           <History className="w-4 h-4 text-slate-400" />Últimos cambios del CRM
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           {[[1, 'Hoy y ayer'], [7, '7 días'], [30, '30 días']].map(([n, label]) => (
             <button key={n} onClick={() => setDias(n)}
-              className={`px-2.5 py-1 rounded-lg border text-xs ${dias === n ? 'border-blue-600 bg-blue-50 text-blue-700 font-medium' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              className={chipPeriodo(dias === n)}>
               {label}
             </button>
           ))}
           <span className="w-px h-5 bg-slate-200 mx-1" />
           <select value={persona} onChange={(e) => setPersona(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white">
+            className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white">
             <option value="">Todo el equipo</option>
             {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
           </select>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white">
+            className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white">
             <option value="seguimientos">Notas y cambios de estado</option>
             <option value="todo">Todos los movimientos</option>
           </select>
           <div className="relative flex-1 min-w-[10rem]">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa o nota…"
-              className="w-full pl-8 pr-2.5 py-1.5 rounded-lg border border-slate-300 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#0e2d4d]/30" />
+              className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/25" />
           </div>
         </div>
       </div>
 
-      {err && <p className="text-sm text-rose-600">{err}</p>}
+      {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
       {filas === null ? (
-        <p className="text-sm text-slate-400 px-1">Cargando…</p>
+        <Cargando />
       ) : porDia.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-10 text-center text-sm text-slate-400">No hay cambios en este periodo.</div>
+        <Vacio icono={History}>No hay cambios en este periodo.</Vacio>
       ) : porDia.map(({ dia, items }) => (
         <div key={dia}>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1 mb-2 first-letter:uppercase">
             {tituloDia(dia)} <span className="text-slate-400 font-normal normal-case">· {items.length}</span>
           </p>
-          <ol className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] divide-y divide-slate-100 overflow-hidden">
+          <ol className="card divide-y divide-slate-100 overflow-hidden">
             {items.map((h) => {
               const emp = empresaDe(h.empresa_id)
               return (
@@ -2020,18 +2103,18 @@ export default function App() {
   }
 
   if (session === undefined) {
-    return <div className="min-h-screen bg-[#f4f6fa] flex items-center justify-center text-slate-400 text-sm">Cargando…</div>
+    return <div className="min-h-screen bg-surface flex items-center justify-center"><Cargando /></div>
   }
   if (!session) return <Auth />
   if (!me) {
     return (
-      <div className="min-h-screen bg-[#f4f6fa] flex flex-col items-center justify-center gap-3 p-4 text-sm text-center">
+      <div className="min-h-screen bg-surface flex flex-col items-center justify-center gap-3 p-4 text-sm text-center">
         {errorCarga ? (
           <>
-            <p className="text-rose-600 flex items-center gap-1.5"><AlertCircle className="w-4 h-4 shrink-0" />No se han podido cargar los datos: {errorCarga}</p>
+            <Aviso tono="error" icono={AlertCircle}>No se han podido cargar los datos: {errorCarga}</Aviso>
             <Btn onClick={cargar}>Reintentar</Btn>
           </>
-        ) : <p className="text-slate-400">Preparando tu perfil…</p>}
+        ) : <Cargando texto="Preparando tu perfil…" />}
         <button onClick={() => supabase.auth.signOut()} className="text-xs text-slate-500 hover:underline">Salir</button>
       </div>
     )
@@ -2075,63 +2158,109 @@ export default function App() {
         .some((v) => (v || '').toLowerCase().includes(q)) || (qCif.length >= 4 && cifNorm(c.cif).includes(qCif))
     })
 
+  const NAV = [
+    ['empresas', 'Empresas', Building2],
+    ...(isAdmin ? [['seguimiento', 'Seguimiento', History], ['equipo', 'Equipo', Users]] : []),
+    ['ranking', 'Ranking', Trophy],
+  ]
+  const TITULOS = {
+    empresas: ['Empresas', isAdmin ? 'Todas las empresas del equipo' : 'Tus empresas y las del equipo'],
+    seguimiento: ['Seguimiento', 'Últimos cambios y notas del equipo'],
+    equipo: ['Equipo', 'Personas, reparto de empresas y puntos'],
+    ranking: ['Ranking', 'Quién lidera el equipo'],
+  }
+  const [titulo, subtitulo] = TITULOS[tab] || TITULOS.empresas
+  const mias = companies.filter((c) => c.responsable === me.id)
+  const stats = [
+    ['Mis empresas', mias.length, Building2, 'text-brand-600 bg-brand-50'],
+    ['Sin contactar', misSinContactar, Inbox, 'text-slate-600 bg-slate-100'],
+    ['En seguimiento', mias.filter((c) => grupoDe('activo').estados.includes(c.estado)).length, Send, 'text-amber-600 bg-amber-50'],
+    ['Becas conseguidas', mias.filter((c) => c.estado === 'beca').length, Trophy, 'text-emerald-600 bg-emerald-50'],
+  ]
+  const botonesUsuario = (
+    <>
+      <button onClick={() => setCambiarPass('normal')} title="Cambiar mi contraseña" aria-label="Cambiar mi contraseña"
+        className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition">
+        <KeyRound className="w-4 h-4" />
+      </button>
+      <button onClick={() => supabase.auth.signOut()} title="Salir" aria-label="Salir"
+        className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition">
+        <LogOut className="w-4 h-4" />
+      </button>
+    </>
+  )
+
   return (
-    <div className="min-h-screen bg-[#f4f6fa]">
-      <header className="bg-[#0d2b45] text-white sticky top-0 z-40 shadow-[0_2px_12px_rgba(13,43,69,0.25)]">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <LogoIaeste />
-            <span className="hidden sm:inline text-sm text-white/60 font-medium border-l border-white/20 pl-2.5">Madrid · CRM</span>
+    <div className="min-h-screen bg-surface">
+      {/* Barra lateral (escritorio) */}
+      <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col bg-brand-900 text-white z-40">
+        <div className="px-6 pt-7 pb-6 border-b border-white/10">
+          <div className="flex items-center gap-2.5"><LogoIaeste /></div>
+          <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">Madrid · CRM</p>
+        </div>
+        <nav className="flex-1 px-3 py-5 space-y-1">
+          {NAV.map(([id, label, Icono]) => (
+            <button key={id} onClick={() => setTab(id)}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition ${tab === id ? 'bg-white text-brand-900 shadow-nav' : 'text-white/70 hover:text-white hover:bg-white/10'}`}>
+              <Icono className="w-[18px] h-[18px]" />{label}
+              {id === 'empresas' && (nHoy + nAtrasadas + nSinMover) > 0 && (
+                <span className="ml-auto text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{nHoy + nAtrasadas + nSinMover}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="m-3 p-3 rounded-2xl bg-white/[0.06] flex items-center gap-3">
+          <Avatar nombre={me.nombre} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold truncate">{me.nombre}</p>
+            <p className="text-[11px] text-white/50 flex items-center gap-1">{isAdmin && <Shield className="w-3 h-3" />}{isAdmin ? 'Administrador' : 'Miembro'}</p>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-3">
-            {(
-              <nav className="flex gap-0.5 sm:gap-1">
-                {[['empresas', 'Empresas'], ...(isAdmin ? [['seguimiento', 'Seguimiento'], ['equipo', 'Equipo']] : []), ['ranking', 'Ranking']].map(([id, label]) => (
-                  <button
-                    key={id}
-                    onClick={() => setTab(id)}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-colors ${tab === id ? 'bg-white text-[#0e2d4d]' : 'text-white/80 hover:text-[#e2e8f0] hover:bg-white/[0.08]'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </nav>
-            )}
-            <div className="flex items-center gap-2 text-sm text-white/80">
-              <span className="hidden sm:flex items-center gap-1.5">
-                {isAdmin && <Shield className="w-3.5 h-3.5 text-white/70" />}
-                {me.nombre}
-              </span>
-              <div className="hidden sm:flex w-8 h-8 rounded-full bg-white text-[#0d2b45] font-bold text-sm items-center justify-center" title={me.nombre}>
-                {(me.nombre || '?').trim().charAt(0).toUpperCase()}
-              </div>
-              <button
-                onClick={() => setCambiarPass('normal')}
-                title="Cambiar mi contraseña"
-                className="p-2 rounded-full hover:bg-white/[0.08] text-white/70 hover:text-white"
-              >
-                <KeyRound className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => supabase.auth.signOut()}
-                title="Salir"
-                className="p-2 rounded-full hover:bg-white/[0.08] text-white/70 hover:text-white"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
+          {botonesUsuario}
+        </div>
+      </aside>
+
+      {/* Barra superior (móvil) */}
+      <header className="lg:hidden bg-brand-900 text-white sticky top-0 z-40 shadow-nav">
+        <div className="px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5"><LogoIaeste /></div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-white/70 mr-1 truncate max-w-[8rem]">{me.nombre}</span>
+            {botonesUsuario}
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">
-        {errorCarga && (
-          <div className="flex items-center gap-2.5 mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <p className="flex-1">No se han podido actualizar los datos: {errorCarga}</p>
-            <button onClick={cargar} className="text-xs font-semibold hover:underline">Reintentar</button>
+      {/* Navegación inferior (móvil) */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 grid pb-[env(safe-area-inset-bottom)]"
+        style={{ gridTemplateColumns: `repeat(${NAV.length}, minmax(0, 1fr))` }}>
+        {NAV.map(([id, label, Icono]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`relative flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold transition ${tab === id ? 'text-brand-700' : 'text-slate-400 hover:text-slate-600'}`}>
+            {tab === id && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-brand-600" />}
+            <Icono className="w-5 h-5" />{label}
+          </button>
+        ))}
+      </nav>
+
+      <main className="lg:pl-64">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-6 lg:pt-10 pb-28 lg:pb-12">
+          <div className="mb-6 flex items-end justify-between gap-3 flex-wrap">
+            <div>
+              <h1 className="text-2xl sm:text-[28px] font-extrabold tracking-tight text-slate-900">{titulo}</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{subtitulo}</p>
+            </div>
+            {tab === 'empresas' && (
+              <Btn onClick={() => setModal('nueva')}><Plus className="w-4 h-4" />Nueva empresa</Btn>
+            )}
           </div>
-        )}
+          {errorCarga && (
+            <Aviso tono="error" icono={AlertCircle} className="mb-4">
+              <span className="flex items-center gap-3">
+                <span className="flex-1">No se han podido actualizar los datos: {errorCarga}</span>
+                <button onClick={cargar} className="text-xs font-semibold hover:underline">Reintentar</button>
+              </span>
+            </Aviso>
+          )}
         {tab === 'ranking' ? (
           <Ranking users={users} me={me} />
         ) : tab === 'seguimiento' && isAdmin ? (
@@ -2140,21 +2269,29 @@ export default function App() {
           <Equipo users={users} companies={companies} me={me} onChanged={cargar} />
         ) : (
           <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+              {stats.map(([label, n, Icono, tono]) => (
+                <div key={label} className="card px-4 py-3.5 flex items-center gap-3">
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tono}`}><Icono className="w-5 h-5" /></span>
+                  <div className="min-w-0">
+                    <p className="text-2xl font-extrabold leading-none tabular-nums text-slate-900">{n}</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-tight">{label}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {misSinContactar === 0 ? (
-              <div className="flex items-start gap-2.5 mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                <Inbox className="w-4 h-4 mt-0.5 shrink-0" />
-                <p>
-                  <strong>No te queda ninguna empresa sin contactar.</strong>{' '}
-                  {isAdmin
-                    ? `Asígnate ${LOTE} más desde la pestaña Equipo.`
-                    : `Pídele a un admin que te asigne ${LOTE} más.`}
-                </p>
-              </div>
+              <Aviso tono="warn" icono={Inbox} className="mb-4">
+                <strong>No te queda ninguna empresa sin contactar.</strong>{' '}
+                {isAdmin
+                  ? `Asígnate ${LOTE} más desde la pestaña Equipo.`
+                  : `Pídele a un admin que te asigne ${LOTE} más.`}
+              </Aviso>
             ) : misSinContactar <= AVISO_POCAS && (
-              <div className="flex items-start gap-2.5 mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                <Inbox className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
-                <p>Te quedan <strong>{misSinContactar}</strong> empresas sin contactar. Ve pidiendo el siguiente lote.</p>
-              </div>
+              <Aviso tono="neutral" icono={Inbox} className="mb-4">
+                Te quedan <strong>{misSinContactar}</strong> empresas sin contactar. Ve pidiendo el siguiente lote.
+              </Aviso>
             )}
             <MiQuincena me={me} companies={companies} onAbrir={setModal} />
             {(nHoy + nAtrasadas + nSinMover) > 0 && (
@@ -2163,8 +2300,8 @@ export default function App() {
                   <button
                     onClick={() => setAgenda(agenda === 'seguimiento' ? '' : 'seguimiento')}
                     title={`Empresas en seguimiento sin ninguna nota ni cambio de estado en ${SIN_MOVER.dias} días`}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${
-                      agenda === 'seguimiento' ? 'bg-orange-600 text-white border-orange-600' : 'bg-orange-50 text-orange-700 border-orange-300 hover:bg-orange-100'
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 transition ${
+                      agenda === 'seguimiento' ? 'bg-orange-600 text-white border-orange-600' : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
                     }`}
                   >
                     <AlertTriangle className="w-3.5 h-3.5" />Realizar seguimiento · {nSinMover}
@@ -2172,8 +2309,8 @@ export default function App() {
                 )}
                 {(nHoy + nAtrasadas) > 0 && <button
                   onClick={() => setAgenda(agenda === 'hoy' ? '' : 'hoy')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${
-                    agenda === 'hoy' ? 'bg-blue-700 text-white border-blue-700' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 transition ${
+                    agenda === 'hoy' ? 'bg-brand-600 text-white border-brand-600' : 'bg-brand-50 text-brand-700 border-brand-200 hover:bg-brand-100'
                   }`}
                 >
                   <CalendarClock className="w-3.5 h-3.5" />Para hoy · {nHoy + nAtrasadas}
@@ -2181,7 +2318,7 @@ export default function App() {
                 {nAtrasadas > 0 && (
                   <button
                     onClick={() => setAgenda(agenda === 'atrasadas' ? '' : 'atrasadas')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition ${
                       agenda === 'atrasadas' ? 'bg-rose-600 text-white border-rose-600' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
                     }`}
                   >
@@ -2189,25 +2326,26 @@ export default function App() {
                   </button>
                 )}
                 {agenda && (
-                  <button onClick={() => setAgenda('')} className="px-3 py-1.5 rounded-full text-xs font-medium text-slate-500 hover:bg-slate-100">
+                  <button onClick={() => setAgenda('')} className="px-3 py-1.5 rounded-full text-xs font-medium text-slate-500 hover:bg-slate-200/60">
                     Ver todas
                   </button>
                 )}
               </div>
             )}
 
-            <div className={`flex sm:grid ${isAdmin ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-1.5 overflow-x-auto bg-[#0e2d4d] rounded-xl p-1.5 mb-4 shadow-[0_4px_16px_rgba(13,43,69,0.18)]`}>
+            <div className="card p-1.5 flex gap-1 overflow-x-auto no-scrollbar mb-4">
               {gruposVisibles.map((g) => {
                 const n = companies.filter((c) => enGrupo(g, c, me.id, isAdmin)).length
+                const on = grupoEf === g.id
                 return (
                   <button
                     key={g.id}
                     onClick={() => { setGrupo(g.id); setFiltroEstado('') }}
-                    className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-full text-sm transition-colors ${
-                      grupoEf === g.id ? 'bg-white text-[#0e2d4d] font-bold shadow-sm' : 'text-white/85 font-medium hover:bg-white/[0.08]'
+                    className={`flex-1 shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-sm transition ${
+                      on ? 'bg-brand-900 text-white font-semibold shadow-nav' : 'text-slate-600 font-medium hover:bg-slate-100'
                     }`}
                   >
-                    {g.label} <span className={grupoEf === g.id ? 'text-[#0e2d4d]/50' : 'text-white/50'}>· {n}</span>
+                    {g.label} <span className={`ml-1 text-xs tabular-nums ${on ? 'text-white/60' : 'text-slate-400'}`}>{n}</span>
                   </button>
                 )
               })}
@@ -2222,10 +2360,10 @@ export default function App() {
               if (chips.length < 2) return <div className="mb-2" />
               const total = delGrupo.length
               return (
-                <div className="flex flex-wrap gap-2 mb-5">
+                <div className="flex gap-2 mb-5 overflow-x-auto no-scrollbar sm:flex-wrap pb-0.5">
                   <button
                     onClick={() => setFiltroEstado('')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${!filtroEstado ? 'bg-[#0e2d4d] text-white border-[#0e2d4d]' : 'bg-white text-slate-600 border-slate-200'}`}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${!filtroEstado ? 'bg-brand-900 text-white border-brand-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                   >
                     Todas · {total}
                   </button>
@@ -2235,8 +2373,8 @@ export default function App() {
                       <button
                         key={e.id}
                         onClick={() => setFiltroEstado(filtroEstado === e.id ? '' : e.id)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                          filtroEstado === e.id ? `${e.color} ring-2 ring-[#0e2d4d] ring-offset-1` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                        className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                          filtroEstado === e.id ? `${e.color} ring-2 ring-brand-900 ring-offset-1` : 'bg-white text-slate-500 border-slate-200 hover:border-slate-200 hover:bg-slate-50'
                         }`}
                       >
                         <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${e.dot}`} />
@@ -2250,15 +2388,15 @@ export default function App() {
 
             <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-4">
               <div className="relative flex-1 basis-full sm:basis-auto">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, CIF, contacto, sector o responsable…" className="pl-9" />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar empresa, CIF, contacto, sector o responsable…" className="pl-10" />
               </div>
               {isAdmin && (
                 <>
                   <select
                     value={filtroPersona}
                     onChange={(e) => { setFiltroPersona(e.target.value); setSelec([]) }}
-                    className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white flex-1 sm:flex-none"
                   >
                     <option value="">Todo el equipo</option>
                     <option value="__sin">Sin asignar ({companies.filter((c) => !c.responsable).length})</option>
@@ -2267,27 +2405,26 @@ export default function App() {
                   <button
                     onClick={() => exportarEmpresas(visibles, nombreDe)}
                     title="Exportar a Excel"
-                    className="px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5"
+                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-600 hover:bg-slate-50 inline-flex items-center gap-1.5 transition"
                   >
                     <FileSpreadsheet className="w-4 h-4" /><span className="hidden lg:inline">Exportar</span>
                   </button>
                 </>
               )}
-              <Btn onClick={() => setModal('nueva')}><Plus className="w-4 h-4" /><span className="hidden sm:inline">Empresa</span></Btn>
             </div>
 
             {visibles.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] p-12 text-center text-slate-400 text-sm">
+              <Vacio icono={companies.length === 0 ? Building2 : Search}>
                 {companies.length === 0
                   ? isAdmin
-                    ? 'Todavía no hay empresas. Añade la primera con el botón «Empresa».'
-                    : 'No tienes empresas asignadas todavía. Puedes añadir una con el botón «Empresa».'
+                    ? 'Todavía no hay empresas. Añade la primera con el botón «Nueva empresa».'
+                    : 'No tienes empresas asignadas todavía. Puedes añadir una con el botón «Nueva empresa».'
                   : 'Ninguna empresa coincide con el filtro.'}
-              </div>
+              </Vacio>
             ) : (
               <>
               {modoAsignar && (
-                <div className="sticky top-16 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#0e2d4d] text-white px-4 py-3 shadow-[0_4px_16px_rgba(13,43,69,0.25)]">
+                <div className="sticky top-16 lg:top-4 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-brand-900 text-white px-4 py-3 shadow-nav">
                   <span className="text-sm font-semibold">{selec.length} seleccionada{selec.length !== 1 ? 's' : ''}</span>
                   <button onClick={() => setSelec(visibles.slice(0, LOTE).map((c) => c.id))}
                     className="px-2.5 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20">Marcar {LOTE} primeras</button>
@@ -2301,28 +2438,31 @@ export default function App() {
                     {users.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
                   <button onClick={asignarSeleccion} disabled={!selec.length || !asignarA || asignando}
-                    className="px-4 py-1.5 rounded-full text-sm font-bold bg-white text-[#0e2d4d] disabled:opacity-40">
+                    className="px-4 py-1.5 rounded-full text-sm font-bold bg-white text-brand-900 disabled:opacity-40">
                     {asignando ? 'Asignando…' : 'Asignar'}
                   </button>
                 </div>
               )}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_1px_2px_rgba(13,43,69,0.04),0_4px_16px_rgba(13,43,69,0.06)] overflow-hidden divide-y divide-slate-100">
+              <div className="card overflow-hidden divide-y divide-slate-100">
                 {visibles.map((c) => (
-                  <div key={c.id} className={`flex items-stretch ${selec.includes(c.id) ? 'bg-blue-50/70' : ''}`}>
+                  <div key={c.id} className={`flex items-stretch ${selec.includes(c.id) ? 'bg-brand-50/70' : ''}`}>
                   {modoAsignar && (
                     <label className="flex items-center pl-4 pr-1 cursor-pointer">
                       <input type="checkbox" checked={selec.includes(c.id)} onChange={() => marcar(c.id)}
-                        className="w-4 h-4 accent-[#0e2d4d]" />
+                        className="w-4 h-4 accent-brand-900" />
                     </label>
                   )}
                   <button
                     onClick={() => setModal(c)}
-                    className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${
-                      c.historica ? 'bg-amber-50/70 hover:bg-amber-50 border-l-4 border-l-amber-500 pl-4' : 'hover:bg-slate-50'
+                    className={`group w-full flex items-center gap-3.5 px-4 sm:px-5 py-3.5 text-left transition-colors ${
+                      c.historica ? 'bg-amber-50/60 hover:bg-amber-50 border-l-4 border-l-amber-400' : 'hover:bg-slate-50/80'
                     }`}
                   >
+                    <span className="hidden sm:flex w-11 h-11 rounded-xl bg-slate-100 text-slate-500 group-hover:bg-brand-50 group-hover:text-brand-600 transition items-center justify-center font-bold shrink-0">
+                      {(c.nombre || '?').trim().charAt(0).toUpperCase()}
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 truncate flex items-center gap-2">
+                      <p className="font-semibold text-slate-900 truncate flex items-center gap-2">
                         <span className="truncate">{c.nombre}</span>
                         {c.historica && (
                           <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold"
@@ -2331,17 +2471,28 @@ export default function App() {
                           </span>
                         )}
                       </p>
-                      <p className="text-xs text-slate-500 truncate">
+                      <p className="text-xs text-slate-500 truncate mt-0.5">
                         {[c.cif, c.sector, c.contacto].filter(Boolean).join(' · ') || '—'}
                       </p>
+                      <div className="sm:hidden mt-2 flex flex-wrap items-center gap-1.5">
+                        <Badge estadoId={c.estado} />
+                        {c.proximo_contacto && (
+                          <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                            c.proximo_contacto < hoy ? 'bg-rose-50 text-rose-700 border-rose-200' : c.proximo_contacto === hoy ? 'bg-brand-50 text-brand-700 border-brand-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                            <CalendarClock className="w-3 h-3" />{fechaCorta(c.proximo_contacto)}
+                          </span>
+                        )}
+                        {sinMover(c) && <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />}
+                      </div>
                     </div>
-                    <span className={`hidden md:flex items-center gap-1.5 text-xs shrink-0 ${c.responsable === me.id ? 'text-[#0e2d4d] font-semibold' : 'text-slate-500'}`}>
-                      <User className="w-3.5 h-3.5" />{c.responsable === me.id ? 'Tú' : nombreDe(c.responsable)}
+                    <span className={`hidden md:flex items-center gap-2 text-xs shrink-0 ${c.responsable === me.id ? 'text-brand-900 font-semibold' : 'text-slate-500'}`}>
+                      {c.responsable ? <Avatar nombre={nombreDe(c.responsable)} size="sm" /> : <User className="w-3.5 h-3.5" />}
+                      {c.responsable === me.id ? 'Tú' : nombreDe(c.responsable)}
                     </span>
                     {sinMover(c) && (
                       <span title={`Sin notas ni cambios de estado en ${SIN_MOVER.dias} días o más`}
-                        className="inline-flex items-center gap-1 text-xs font-semibold shrink-0 px-2 py-0.5 rounded-full border bg-orange-50 text-orange-700 border-orange-300">
-                        <AlertTriangle className="w-3.5 h-3.5" /><span className="hidden sm:inline">Realizar seguimiento</span>
+                        className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold shrink-0 px-2 py-0.5 rounded-full border bg-orange-50 text-orange-700 border-orange-200">
+                        <AlertTriangle className="w-3.5 h-3.5" /><span className="hidden lg:inline">Realizar seguimiento</span>
                       </span>
                     )}
                     {c.proximo_contacto && (
@@ -2349,14 +2500,14 @@ export default function App() {
                         c.proximo_contacto < hoy
                           ? 'bg-rose-50 text-rose-700 border-rose-200'
                           : c.proximo_contacto === hoy
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            ? 'bg-brand-50 text-brand-700 border-brand-200'
                             : 'bg-slate-50 text-slate-500 border-slate-200'
                       }`}>
                         <CalendarClock className="w-3 h-3" />{fechaCorta(c.proximo_contacto)}
                       </span>
                     )}
-                    <Badge estadoId={c.estado} />
-                    <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+                    <span className="hidden sm:block shrink-0"><Badge estadoId={c.estado} /></span>
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-brand-500 group-hover:translate-x-0.5 transition shrink-0" />
                   </button>
                   </div>
                 ))}
@@ -2365,6 +2516,7 @@ export default function App() {
             )}
           </>
         )}
+        </div>
       </main>
 
       {modal && (
@@ -2383,7 +2535,7 @@ export default function App() {
       {cambiarPass && <CambiarContrasena recuperacion={cambiarPass === 'recuperacion'} onClose={() => setCambiarPass('')} />}
 
       {aviso && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#0d2b45] text-white text-sm px-4 py-2 rounded-full shadow-lg z-50">
+        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 animate-toast bg-brand-900 text-white text-sm font-medium px-5 py-2.5 rounded-full shadow-pop z-[60] max-w-[calc(100vw-2rem)] text-center">
           {aviso}
         </div>
       )}
