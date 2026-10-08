@@ -1,0 +1,22 @@
+{
+  "name": "crm-iaeste-correo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "sync": "node --env-file-if-exists=.env src/sync-una-vez.js",
+    "test": "node --env-file-if-exists=.env --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "imapflow": "^1.0.170",
+    "mailparser": "^3.7.1",
+    "nodemailer": "^6.9.15"
+  }
+}

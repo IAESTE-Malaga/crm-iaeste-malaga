@@ -1,7 +1,7 @@
 // Escribe .env.development.local con la URL y la clave pública del Supabase LOCAL
 // (las saca de `supabase status`). Vite lo carga solo en `npm run dev`, nunca en el build.
 import { execSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, existsSync } from 'node:fs'
 
 let salida
 try {
@@ -31,11 +31,33 @@ writeFileSync('.env.development.local', [
   '',
 ].join('\n'))
 
+// Servicio de correo (server/): en local envía a Mailpit y NO sincroniza IMAP (no hay Gmail de verdad).
+// No se pisa si ya existe, por si ahí has puesto tus credenciales reales de pruebas.
+if (!existsSync('server/.env') && vars.SERVICE_ROLE_KEY) {
+  writeFileSync('server/.env', [
+    '# Generado por `npm run db:env` — SOLO entorno local (envía a Mailpit, sin IMAP). No lo subas al repo.',
+    `SUPABASE_URL=${url}`,
+    `SUPABASE_SERVICE_ROLE_KEY=${vars.SERVICE_ROLE_KEY}`,
+    `SUPABASE_ANON_KEY=${key}`, // solo lo usan los tests de server/
+    'GMAIL_USER=crm.local@iaeste.test',
+    'GMAIL_APP_PASSWORD=sin-usar-en-local',
+    'SMTP_HOST=127.0.0.1',
+    'SMTP_PORT=54325',
+    'SMTP_SECURE=false',
+    'SMTP_AUTH=false',
+    'SYNC_ENABLED=false',
+    'CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173',
+    '',
+  ].join('\n'))
+  console.log('server/.env creado (correo local → Mailpit)')
+}
+
 console.log(`
 .env.development.local listo (${url})
 
   App:              npm run dev  →  http://localhost:5173
   Supabase Studio:  ${vars.STUDIO_URL || 'http://127.0.0.1:54323'}
   Correos (Mailpit): ${vars.INBUCKET_URL || vars.MAILPIT_URL || 'http://127.0.0.1:54324'}
+  Servicio de correo: npm --prefix server start  →  http://localhost:8787
   Usuarios de prueba: ver supabase/seed.sql
 `)

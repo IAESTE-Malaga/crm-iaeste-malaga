@@ -162,3 +162,26 @@ where s.seg is not null;
 
 alter table public.empresas enable trigger empresas_after_write;
 drop table semilla;
+
+-- ---------- Correos de ejemplo (hilo de conversación) ----------
+insert into public.contactos (empresa_id, nombre, email)
+select e.id, e.contacto, lower(e.email) from public.empresas e
+where e.nombre in ('Redes del Sur S.A.', 'Telemática Avanzada S.L.');
+
+insert into public.emails (direccion, contacto_id, empresa_id, message_id, in_reply_to, remitente, destinatario, asunto, cuerpo_texto, enviado_en, enviado_por)
+select v.dir, c.id, c.empresa_id, v.mid, v.reply, case when v.dir = 'saliente' then 'crm.local@iaeste.test' else c.email end,
+       case when v.dir = 'saliente' then c.email else 'crm.local@iaeste.test' end,
+       v.asunto, v.cuerpo, now() - make_interval(days => v.hace), case when v.dir = 'saliente' then '33333333-3333-4333-8333-333333333333'::uuid end
+from (values
+  ('redesdelsur.example', 'saliente', '<seed-1@iaeste.test>', null,                   'IAESTE Madrid - Programa de prácticas internacionales', E'Buenos días Jorge,\n\nTe escribo de parte de IAESTE Madrid para presentaros nuestro programa de prácticas internacionales.\n\nUn saludo.', 12),
+  ('redesdelsur.example', 'entrante', '<seed-2@redesdelsur.example>', '<seed-1@iaeste.test>', 'Re: IAESTE Madrid - Programa de prácticas internacionales', E'Hola,\n\nNos interesa. ¿Podéis mandarnos el modelo de convenio y las condiciones?\n\nGracias,\nJorge', 10),
+  ('redesdelsur.example', 'saliente', '<seed-3@iaeste.test>', '<seed-2@redesdelsur.example>', 'Re: IAESTE Madrid - Programa de prácticas internacionales', E'Hola Jorge,\n\nTe adjunto el modelo de convenio. Dime si necesitáis algo más.\n\nUn saludo.', 9),
+  ('telematica-avanzada.example', 'entrante', '<seed-4@telematica-avanzada.example>', null, 'Consulta sobre plazas de verano', E'Buenos días,\n\nQuerríamos 2 plazas para verano de 2027. ¿Cuál es el plazo?\n\nCarmen Ruiz', 3)
+) v(dom, dir, mid, reply, asunto, cuerpo, hace)
+join public.contactos c on c.email like '%@' || v.dom;
+
+-- Un correo de un remitente que no está en ninguna ficha: solo lo ven los admins
+insert into public.contactos (email, nombre) values ('desconocido@otraempresa.example', 'Alguien Nuevo');
+insert into public.emails (direccion, contacto_id, message_id, remitente, destinatario, asunto, cuerpo_texto, enviado_en)
+select 'entrante', id, '<seed-5@otraempresa.example>', email, 'crm.local@iaeste.test', 'Información sobre IAESTE', 'Hola, ¿cómo podemos ofrecer una plaza?', now() - interval '1 day'
+from public.contactos where email = 'desconocido@otraempresa.example';

@@ -60,6 +60,15 @@ Si te registras con un email nuevo, el correo de confirmación llega a **Mailpit
 
 ---
 
+## Correo (enviar y recibir desde la ficha de cada empresa)
+
+Cada empresa tiene un hilo de correos y una caja para responder, usando un buzón compartido de Gmail por SMTP/IMAP (el equipo no necesita acceso a la cuenta de Google). Lo hace un pequeño servicio Node en `server/`: guía completa, variables y cómo crear la contraseña de aplicación en [`server/README.md`](server/README.md).
+
+```bash
+npm run server:install   # una vez
+npm run correo           # http://localhost:8787 — en local envía a Mailpit
+```
+
 ## Desplegar desde cero (Supabase + Vercel)
 
 1. **Supabase:** crea un proyecto en [supabase.com](https://supabase.com). En una terminal del repo: `npx supabase login`, `npx supabase link --project-ref <ref>` y `npx supabase db push` (aplica las migraciones; **no** carga el seed).
@@ -78,6 +87,7 @@ src/App.jsx                  toda la aplicación (un solo fichero a propósito)
 src/supabase.js              cliente de Supabase
 public/                      logos
 supabase/migrations/         esquema de la base de datos (fuente de verdad)
+server/                      servicio de correo SMTP/IMAP (Node)
 supabase/seed.sql            datos de prueba SOLO para local
 supabase/config.toml         configuración del Supabase local
 scripts/env-local.mjs        genera .env.development.local

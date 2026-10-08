@@ -14,7 +14,9 @@
     "db:status": "supabase status",
     "db:env": "node scripts/env-local.mjs",
     "db:new-migration": "supabase migration new",
-    "db:test": "node scripts/smoke-test.mjs"
+    "db:test": "node scripts/smoke-test.mjs",
+    "correo": "npm --prefix server start",
+    "server:install": "npm --prefix server install"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

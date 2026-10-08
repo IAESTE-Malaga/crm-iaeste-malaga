@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from './supabase'
+import EmailThread from './EmailThread'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
@@ -990,6 +991,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
               )}
             </div>
           </div>
+          {!nueva && <EmailThread empresa={empresa} />}
           <div className="pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
