@@ -5,6 +5,19 @@ import { supabase } from './supabase'
 // URL del servicio de correo (server/). En desarrollo, el puerto por defecto; en producción hay que definirla.
 const API = (import.meta.env.VITE_EMAIL_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '')
 const REFRESCO_MS = 60_000
+const SYNC_MIN_MS = 60_000
+let ultimaSync = 0 // compartido entre fichas: no se pide a Gmail más de una vez por minuto desde este navegador
+
+// Pide al servicio que lea el buzón (IMAP) ahora. Si falla, se sigue mostrando lo que ya hay en la base de datos.
+async function sincronizar(forzar = false) {
+  if (!API && !import.meta.env.DEV) return
+  if (!forzar && Date.now() - ultimaSync < SYNC_MIN_MS) return
+  ultimaSync = Date.now()
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`${API}/api/sync`, { method: 'POST', headers: { Authorization: `Bearer ${session?.access_token}` } })
+  } catch { /* sin conexión con el servicio: no pasa nada */ }
+}
 
 const cuando = (iso) =>
   new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -23,6 +36,7 @@ export default function EmailThread({ empresa }) {
   const [cuerpo, setCuerpo] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState('')
+  const [sincronizando, setSincronizando] = useState(false)
   const [tocado, setTocado] = useState(false)    // si el usuario ya ha escrito el asunto/destinatario, no se pisa
   const fin = useRef(null)
 
@@ -38,11 +52,18 @@ export default function EmailThread({ empresa }) {
     setCorreos(data)
   }, [empresa.id])
 
+  const actualizar = useCallback(async (forzar = false) => {
+    setSincronizando(true)
+    await sincronizar(forzar)
+    await cargar()
+    setSincronizando(false)
+  }, [cargar])
+
   useEffect(() => {
-    cargar()
+    actualizar()
     const t = setInterval(cargar, REFRESCO_MS)
     return () => clearInterval(t)
-  }, [cargar])
+  }, [cargar, actualizar])
 
   const ultimo = correos?.[correos.length - 1]
   const opciones = [...new Set([
@@ -92,8 +113,8 @@ export default function EmailThread({ empresa }) {
         <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
           <Mail className="w-3.5 h-3.5" />Correos{correos?.length ? ` · ${correos.length}` : ''}
         </p>
-        <button onClick={cargar} title="Actualizar" className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-          <RefreshCw className="w-3.5 h-3.5" />
+        <button onClick={() => actualizar(true)} disabled={sincronizando} title="Buscar correos nuevos" className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-60">
+          <RefreshCw className={`w-3.5 h-3.5 ${sincronizando ? 'animate-spin' : ''}`} />
         </button>
       </div>
 

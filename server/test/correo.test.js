@@ -189,7 +189,7 @@ test('API: validación de entrada (asunto con saltos de línea, vacíos, email i
   assert.equal((await post('/api/emails/send', token, { ...ok, empresa_id: '00000000-0000-4000-8000-000000000000' })).status, 404)
 })
 
-test('API: un admin envía desde cualquier empresa; /api/sync solo para admins', async () => {
+test('API: un admin envía desde cualquier empresa; /api/sync exige sesión (cualquier usuario puede pedirla)', async () => {
   const ana = await login('ana@iaeste.test', 'Admin1234')
   const r = await post('/api/emails/send', ana.token, { empresa_id: empresaPablo, para: 'rdelgado@meridiano.example', asunto: `Admin ${Date.now()}`, cuerpo: 'hola' })
   // rdelgado no está en la ficha de Meridiano (es talento@meridiano.example): comprobamos la regla, no el éxito
@@ -197,7 +197,9 @@ test('API: un admin envía desde cualquier empresa; /api/sync solo para admins',
   const r2 = await post('/api/emails/send', ana.token, { empresa_id: empresaPablo, para: 'talento@meridiano.example', asunto: `Admin ${Date.now()}`, cuerpo: 'hola' })
   assert.equal(r2.status, 201)
   const marta = await login('marta@iaeste.test', 'Miembro1234')
-  assert.equal((await post('/api/sync', marta.token, {})).status, 403)
+  const sync = await post('/api/sync', marta.token, {})
+  assert.equal(sync.status, 200)
+  assert.equal((await sync.json()).omitido, true) // en las pruebas SYNC_ENABLED=false
   assert.equal((await post('/api/sync', null, {})).status, 401)
 })
 

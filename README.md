@@ -2,7 +2,7 @@
 
 Aplicación web para gestionar el contacto con empresas del comité: quién habla con quién, en qué punto está cada conversación, cuándo toca el siguiente seguimiento y un ranking de puntos del equipo.
 
-**Stack:** React 18 + Vite + Tailwind CSS v4 + Supabase (Auth + Postgres con Row Level Security). Despliegue pensado para Vercel.
+**Stack:** React 18 + Vite + Tailwind CSS v4 + Supabase (Auth + Postgres con Row Level Security). Despliegue íntegro en Vercel (web + API de correo) y Supabase.
 
 ## Roles
 
@@ -77,7 +77,13 @@ npm run correo           # http://localhost:8787 — en local envía a Mailpit
 2. **Authentication → Hooks → Before User Created:** actívalo con la función Postgres `public.hook_antes_de_crear_usuario` (bloquea correos desechables).
 3. **Authentication → Sign In / Providers → Email:** deja **Confirm email** activado, longitud mínima 8 y "letters and digits". **URL Configuration:** pon la URL de Vercel como *Site URL* y en *Redirect URLs* (necesario para recuperación de contraseña y confirmación).
 4. **Authentication → SMTP:** el correo por defecto de Supabase está muy limitado (pocos mensajes por hora); configura un SMTP propio para que el equipo pueda registrarse y recuperar contraseñas.
-5. **Vercel:** importa el repo (detecta Vite) y añade `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (Project Settings → API → *anon/publishable key*). Opcional: `VITE_PUBLIC_URL` con la URL pública para el logo de la plantilla de correo.
+5. **Vercel:** importa el repo (detecta Vite). La API de correo corre en el mismo proyecto como función serverless (`api/index.js`), así que no hace falta ningún otro hosting. Variables de entorno:
+   - `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (Project Settings → API → *anon/publishable key*).
+   - `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` (**secreta**, sin prefijo `VITE_`).
+   - `GMAIL_USER`, `GMAIL_APP_PASSWORD` y, opcional, `MAIL_FROM_NAME` (ver [`server/README.md`](server/README.md) para crear la contraseña de aplicación).
+   - Opcional: `VITE_PUBLIC_URL` con la URL pública para el logo de la plantilla de correo.
+   No definas `VITE_EMAIL_API_URL`: sin ella el navegador usa `/api/...` del mismo dominio.
+   Los correos entrantes **no se leen en segundo plano**: se buscan en Gmail cuando alguien abre los correos de una empresa o pulsa el botón de actualizar.
 6. Regístrate tú primero: serás admin. Después los demás se registran y desde la pestaña **Equipo** les asignas empresas o los haces admin.
 
 La anon key es pública por diseño; la seguridad la imponen las políticas RLS. Nunca pongas la `service_role`/secret key en el frontend ni en el repo.

@@ -13,7 +13,7 @@ Navegador (React) ──token de sesión──► POST /api/emails/send ──SM
 
 - Las credenciales de Gmail y la `service_role` key **solo viven en este servidor**. El navegador nunca las ve.
 - El navegador solo **lee** `emails`/`contactos` (con las mismas reglas del CRM: admin ve todo, miembro solo lo de sus empresas). Escribir solo puede el servidor.
-- No puede ir en Vercel: el worker IMAP es un proceso que se queda corriendo. Sirve cualquier hosting Node (Railway, Render, Fly.io, un VPS…).
+- **Producción (Vercel):** la API corre como función serverless (`api/index.js` en la raíz) y no hay worker: el buzón se lee a demanda con `POST /api/sync` (lo pide el CRM al abrir los correos de una empresa o al pulsar actualizar; cualquier usuario con sesión, con un enfriamiento de 45 s). En local (`npm run correo`) sigue existiendo el sondeo periódico.
 
 ## 1. Preparar la cuenta de Gmail
 
@@ -23,7 +23,7 @@ Navegador (React) ──token de sesión──► POST /api/emails/send ──SM
 4. IMAP ya viene activado en cuentas nuevas. Si no: Gmail → Configuración → *Reenvío y correo POP/IMAP* → Activar IMAP.
 5. Guarda la contraseña de aplicación en el gestor de contraseñas del comité. Si se filtra, se revoca en la misma página sin cambiar la contraseña real.
 
-Límites de Gmail a tener en cuenta: ~500 correos al día en cuentas gratuitas (2.000 en Workspace). El servicio limita además a 30 envíos/hora por persona (`SENDS_PER_HOUR_PER_USER`).
+Límites de Gmail a tener en cuenta: ~500 correos al día en cuentas gratuitas (2.000 en Workspace). El servicio limita además a 30 envíos/hora por persona (contados en la base de datos) (`SENDS_PER_HOUR_PER_USER`).
 
 ## 2. Base de datos
 
@@ -58,13 +58,13 @@ Los correos enviados en local aparecen en Mailpit (<http://127.0.0.1:54324>).
 npm --prefix server run sync    # lee los no leídos, los guarda y los marca como leídos
 ```
 
-**Producción**: despliega la carpeta `server/` (comando `npm install`, arranque `npm start`), define las variables en el panel del hosting, y en Vercel añade `VITE_EMAIL_API_URL=https://tu-servicio.example`. Comprueba `GET /health`. Mantén **una sola instancia** del servicio (si hubiera dos, no se duplicaría nada gracias a `message_id`, pero se haría trabajo doble).
+**Producción (Vercel)**: no hay que desplegar `server/` aparte. Define en Vercel `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD` (y `MAIL_FROM_NAME`) y deja sin definir `VITE_EMAIL_API_URL`. Comprueba `GET /api/health`. Si prefieres un hosting Node propio, `npm start` en `server/` sigue funcionando (entonces sí hacen falta `CORS_ORIGINS` y `VITE_EMAIL_API_URL`).
 
 ## 5. Cómo funciona
 
 **Envío** (`POST /api/emails/send`, cabecera `Authorization: Bearer <token de sesión>`): comprueba la sesión, que el usuario lleve esa empresa (o sea admin) y que el destinatario **pertenezca a la empresa** (email de la ficha o contacto suyo) — así la cuenta compartida no sirve de relé de spam. Envía por SMTP con `Message-ID` propio y cabeceras `In-Reply-To`/`References` si responde a un correo, y lo guarda ligado al contacto. El cuerpo se envía como texto + HTML escapado.
 
-**Recepción** (cada `SYNC_INTERVAL_MINUTES`, por defecto 3): conecta por IMAP, busca los **no leídos** de INBOX y por cada uno: interpreta el MIME (`mailparser`: multipart, quoted-printable/base64, charsets, cabeceras codificadas; los adjuntos se ignoran), busca la empresa y guarda. Solo **después de guardar** lo marca como leído.
+**Recepción** (a demanda con `POST /api/sync`; en un servidor propio, también cada `SYNC_INTERVAL_MINUTES`, por defecto 3): conecta por IMAP, busca los **no leídos** de INBOX y por cada uno: interpreta el MIME (`mailparser`: multipart, quoted-printable/base64, charsets, cabeceras codificadas; los adjuntos se ignoran), busca la empresa y guarda. Solo **después de guardar** lo marca como leído.
 
 Cómo se asocia un remitente a una empresa, por orden:
 1. Ya es un contacto conocido con empresa.

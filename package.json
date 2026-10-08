@@ -22,7 +22,12 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
+    "cors": "^2.8.6",
+    "express": "^4.22.3",
+    "imapflow": "^1.7.8",
     "lucide-react": "^0.454.0",
+    "mailparser": "^3.9.37",
+    "nodemailer": "^6.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
