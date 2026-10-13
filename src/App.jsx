@@ -239,7 +239,8 @@ const Avatar = ({ nombre = '?', size = 'md', className = '' }) => {
 }
 
 // Contenedor de diálogos: centrado en móvil como hoja inferior, y en escritorio como panel lateral (panel) o diálogo (dialogo)
-function Modal({ children, onClose, ancho = 'max-w-lg', panel = false }) {
+// columna: el cuerpo se reparte en una columna flex (cabecera, contenido con scroll propio, pie); fijo: ocupa casi toda la altura
+function Modal({ children, onClose, ancho = 'max-w-lg', panel = false, columna = false, fijo = false }) {
   useEffect(() => {
     if (!onClose) return
     const alTeclear = (e) => e.key === 'Escape' && onClose()
@@ -249,9 +250,11 @@ function Modal({ children, onClose, ancho = 'max-w-lg', panel = false }) {
   return (
     <div className={`fixed inset-0 bg-brand-950/50 backdrop-blur-[2px] animate-fade-in flex z-50 ${panel ? 'items-end sm:items-stretch sm:justify-end' : 'items-end sm:items-center justify-center p-0 sm:p-4'}`} onClick={onClose}>
       <div
-        className={`w-full ${ancho} bg-white shadow-pop overflow-y-auto scroll-thin ${
-          panel ? 'rounded-t-3xl sm:rounded-none sm:rounded-l-3xl max-h-[92vh] sm:max-h-none animate-rise sm:animate-slide-in' : 'rounded-t-3xl sm:rounded-3xl max-h-[92vh] animate-rise'
-        }`}
+        className={`w-full ${ancho} bg-white shadow-pop ${columna
+          ? `flex flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl animate-rise ${fijo ? 'h-[94vh]' : 'max-h-[94vh]'}`
+          : `overflow-y-auto scroll-thin ${
+            panel ? 'rounded-t-3xl sm:rounded-none sm:rounded-l-3xl max-h-[92vh] sm:max-h-none animate-rise sm:animate-slide-in' : 'rounded-t-3xl sm:rounded-3xl max-h-[92vh] animate-rise'
+          }`}`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -262,7 +265,7 @@ function Modal({ children, onClose, ancho = 'max-w-lg', panel = false }) {
 
 function ModalHead({ children, onClose, sub }) {
   return (
-    <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-10">
+    <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-slate-100 shrink-0 sticky top-0 bg-white/90 backdrop-blur z-10">
       <div className="min-w-0">
         <h2 className="font-bold text-slate-900 text-lg leading-snug break-words">{children}</h2>
         {sub}
@@ -774,7 +777,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
         {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-all">{v}</a> : <span className="break-words">{v}</span>}</p>
     )
     return (
-      <Modal panel onClose={onClose}>
+      <Modal ancho="max-w-2xl" onClose={onClose}>
           <ModalHead onClose={onClose}>{f.nombre}</ModalHead>
           <div className="p-6 space-y-4 text-sm text-slate-700">
             <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
@@ -805,9 +808,11 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
   }
 
   return (
-    <Modal panel ancho="max-w-xl" onClose={onClose}>
+    <Modal columna fijo={!nueva} ancho={nueva ? 'max-w-2xl' : 'max-w-7xl'} onClose={onClose}>
         <ModalHead onClose={onClose} sub={!nueva && <div className="mt-1.5"><Badge estadoId={empresa.estado} /></div>}>{nueva ? 'Nueva empresa' : empresa.nombre}</ModalHead>
-        <div className="p-6 space-y-5">
+        {/* Escritorio: datos y seguimiento a la izquierda, correo a la derecha, cada columna con su propio scroll */}
+        <div className={`flex-1 min-h-0 overflow-y-auto ${nueva ? '' : 'lg:overflow-hidden lg:grid lg:grid-rows-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]'}`}>
+        <div className={`p-6 space-y-5 ${nueva ? '' : 'lg:overflow-y-auto lg:h-full'}`}>
           {practicas.length > 0 && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="flex items-start gap-2">
@@ -929,13 +934,6 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
               )}
             </div>
           </div>
-          {!nueva && <EmailThread empresa={empresa} yo={me.nombre} onEnviado={(estado) => {
-            // El servidor ya ha cambiado el estado: se refleja aquí para que «Guardar» no lo pise con el valor antiguo
-            setEmpresa((e) => ({ ...e, estado, notas: 'Mail enviado' }))
-            setF((p) => ({ ...p, estado, notas: 'Mail enviado' }))
-            setRecargaHist((n) => n + 1)
-            onRefresh?.()
-          }} />}
           <div className="pt-5 border-t border-slate-100">
             <div className="flex items-center justify-between mb-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -1007,13 +1005,25 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
           {f.actualizado && !nueva && (
             <p className="text-xs text-slate-400">Última actualización: {fecha(f.actualizado)}{f.actualizado_por ? ` · ${f.actualizado_por}` : ''}</p>
           )}
-          {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
-          <div className="flex items-center justify-between py-3 -mx-6 px-6 -mb-6 sticky bottom-0 bg-white/90 backdrop-blur border-t border-slate-100">
-            {isAdmin && !nueva ? (
-              <Btn variant="danger" onClick={eliminar}><Trash2 className="w-4 h-4" />Eliminar</Btn>
-            ) : <span />}
-            <Btn onClick={() => guardar()} disabled={busy || !!cifDup}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
+        </div>
+        {!nueva && (
+          <div className="p-6 border-t lg:border-t-0 lg:border-l border-slate-100 bg-slate-50/60 lg:overflow-y-auto lg:h-full">
+            <EmailThread empresa={empresa} yo={me.nombre} onEnviado={(estado) => {
+              // El servidor ya ha cambiado el estado: se refleja aquí para que «Guardar» no lo pise con el valor antiguo
+              setEmpresa((e) => ({ ...e, estado, notas: 'Mail enviado' }))
+              setF((p) => ({ ...p, estado, notas: 'Mail enviado' }))
+              setRecargaHist((n) => n + 1)
+              onRefresh?.()
+            }} />
           </div>
+        )}
+        </div>
+        <div className="shrink-0 flex items-center gap-3 px-6 py-3 border-t border-slate-100 bg-white">
+          {isAdmin && !nueva && <Btn variant="danger" onClick={eliminar}><Trash2 className="w-4 h-4" />Eliminar</Btn>}
+          <p className="flex-1 min-w-0 text-xs text-rose-600 flex items-start gap-1.5">
+            {err && <><AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{err}</span></>}
+          </p>
+          <Btn onClick={() => guardar()} disabled={busy || !!cifDup}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
         </div>
     </Modal>
   )
