@@ -8,7 +8,7 @@ Aplicación web para gestionar el contacto con empresas del comité: quién habl
 
 | Rol | Qué puede hacer |
 |---|---|
-| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas históricas), cambiar roles, poner contraseñas temporales |
+| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas prioritarias), cambiar roles, poner contraseñas temporales |
 | **Miembro** | Ver todas las empresas (las ajenas en solo lectura). Crear empresas (quedan asignadas a él) y, en las suyas, editar contacto, CIF, estado, notas y próximo contacto |
 
 Las reglas están impuestas en la base de datos (políticas RLS y triggers), no solo en la interfaz. El primer usuario que se registra en una base vacía es admin. Siempre tiene que quedar al menos un admin.
@@ -45,7 +45,7 @@ npm run dev             # http://localhost:5173
 | pablo@iaeste.test | Miembro1234 | miembro |
 | irene@iaeste.test | Miembro1234 | miembro |
 
-Los datos de prueba (38 empresas ficticias con historial, históricas y bote común sin asignar) se generan con fechas relativas a hoy, así que la agenda, los avisos de seguimiento y la quincena siempre tienen algo que mostrar.
+Los datos de prueba (38 empresas ficticias con historial, prioritarias y bote común sin asignar) se generan con fechas relativas a hoy, así que la agenda, los avisos de seguimiento y la quincena siempre tienen algo que mostrar.
 
 Si te registras con un email nuevo, el correo de confirmación llega a **Mailpit**, no a una bandeja real.
 

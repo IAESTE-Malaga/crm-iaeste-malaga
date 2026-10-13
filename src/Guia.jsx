@@ -10,7 +10,7 @@ const ESTADOS_GUIA = [
   ['Muy interesados', 'bg-orange-50 text-orange-700 border-orange-200', 'Han respondido con interés: piden información, convenio o una reunión.'],
   ['Para más adelante', 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', 'Ahora no pueden, pero hay que volver a escribirles más adelante (anota cuándo en «Próximo contacto»).'],
   ['Otra comunidad', 'bg-neutral-100 text-neutral-600 border-neutral-300', 'La empresa pertenece a otra comunidad o comité: no la llevamos nosotros.'],
-  ['Beca conseguida', 'bg-emerald-50 text-emerald-700 border-emerald-200', 'Han firmado una práctica con IAESTE.'],
+  ['Práctica conseguida', 'bg-emerald-50 text-emerald-700 border-emerald-200', 'Han firmado una práctica con IAESTE.'],
   ['No quieren', 'bg-rose-50 text-rose-700 border-rose-200', 'Han dicho que no están interesados.'],
   ['Ya no existe', 'bg-stone-100 text-stone-500 border-stone-300', 'La empresa ha cerrado o no se localiza.'],
 ]
@@ -73,7 +73,7 @@ export default function Guia({ isAdmin }) {
         <Lista>
           <li><B>Empresas disponibles:</B> las que aún no has contactado.</li>
           <li><B>Seguimiento activo:</B> conversaciones abiertas (no lo cogen, mail enviado, para más adelante, muy interesados).</li>
-          <li><B>Cerradas:</B> beca conseguida, no quieren, ya no existe u otra comunidad.</li>
+          <li><B>Cerradas:</B> práctica conseguida, no quieren, ya no existe u otra comunidad.</li>
           <li><B>Todas:</B> todas las empresas del CRM, también las de tus compañeros, en solo lectura.</li>
         </Lista>
         <p>
@@ -100,7 +100,7 @@ export default function Guia({ isAdmin }) {
           ))}
         </div>
         <p>
-          Al pasar una empresa a <B>Beca conseguida</B> verás un aviso: un admin registrará el año y el número de prácticas y la dejará como empresa <B>histórica</B>.
+          Al pasar una empresa a <B>Práctica conseguida</B> verás un aviso: un admin registrará el año y el número de prácticas y la dejará como empresa <B>prioritaria</B>.
         </p>
       </Seccion>
 
@@ -150,7 +150,7 @@ export default function Guia({ isAdmin }) {
             <li><B><Users className="inline w-3.5 h-3.5 -mt-0.5" /> Equipo:</B> reparte empresas (botones <B>+5</B> / <B>−5</B> por persona, que asignan o devuelven al bote común empresas sin contactar), cambia roles (miembro/admin) y pon una contraseña temporal a quien la haya olvidado.</li>
             <li><B><History className="inline w-3.5 h-3.5 -mt-0.5" /> Seguimiento:</B> últimos cambios y notas de todo el equipo, filtrables por persona.</li>
             <li><B><Trophy className="inline w-3.5 h-3.5 -mt-0.5" /> Ranking y puntos:</B> solo lo ves tú. Cada empresa puntúa según su estado actual (contactada 1, cerrada 3) más un bonus por quincena cumplida. Los miembros no ven el ranking.</li>
-            <li><B><Star className="inline w-3.5 h-3.5 -mt-0.5" /> Históricas:</B> al conseguir una beca, registra año y nº de prácticas desde la ficha; la empresa pasa sola al apartado «Históricas».</li>
+            <li><B><Star className="inline w-3.5 h-3.5 -mt-0.5" /> Prioritarias:</B> al conseguir una práctica, registra año y nº de prácticas desde la ficha; la empresa pasa sola al apartado «Prioritarias».</li>
             <li><B>Asignación rápida:</B> filtra por «Sin asignar» en Empresas, marca las que quieras y asígnalas de golpe. También puedes exportar la lista a Excel.</li>
             <li><B>Plantillas:</B> puedes editar y borrar las de cualquiera, incluida la de serie.</li>
           </Lista>

@@ -21,7 +21,7 @@ const ESTADOS = [
   { id: 'segundo_plazo', oculto: true, label: 'Segundo plazo', color: 'bg-amber-100 text-amber-900 border-amber-300', dot: 'bg-amber-700' },
   { id: 'otra_provincia', label: 'Otra comunidad', color: 'bg-neutral-100 text-neutral-600 border-neutral-300', dot: 'bg-neutral-400' },
   { id: 'interesados', label: 'Muy interesados', color: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
-  { id: 'beca', label: 'Beca conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+  { id: 'beca', label: 'Práctica conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
   { id: 'no_existe', label: 'Ya no existe', color: 'bg-stone-100 text-stone-500 border-stone-300 line-through', dot: 'bg-stone-400' },
   { id: 'rechazada', label: 'No quieren', color: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
 ]
@@ -30,7 +30,7 @@ const GRUPOS = [
   { id: 'disponibles', label: 'Empresas disponibles', estados: ['sin_contactar'] },
   { id: 'activo', label: 'Seguimiento activo', estados: ['no_contesta', 'mail_enviado', 'mas_adelante', 'segundo_plazo', 'interesados'] },
   { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'] },
-  { id: 'historicas', label: 'Históricas', estados: null, historicas: true, soloAdmin: true },
+  { id: 'historicas', label: 'Prioritarias', estados: null, historicas: true, soloAdmin: true },
   { id: 'todas', label: 'Todas', estados: null },
 ]
 // Para un miembro, todos los apartados salvo «Todas» muestran solo sus empresas
@@ -40,7 +40,7 @@ const enGrupo = (g, c, meId, admin = true) =>
 // Normaliza un CIF para comparar: sin espacios, guiones ni puntos y en mayúsculas
 const cifNorm = (cif) => String(cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
 // Texto «2023 (3 prácticas) y 2024 (1 práctica)» a partir de las filas de la tabla practicas
-// (año o número pueden venir vacíos en las históricas importadas del Excel)
+// (año o número pueden venir vacíos en las prioritarias importadas del Excel)
 const textoPracticas = (lista = []) => {
   const partes = [...lista].sort((a, b) => (a.anio || 0) - (b.anio || 0))
     .map((p) => `${p.anio || 'un año sin registrar'}${p.num_practicas ? ` (${p.num_practicas} práctica${p.num_practicas !== 1 ? 's' : ''})` : ''}`)
@@ -89,7 +89,7 @@ const PUNTOS = {
 //  - «En seguimiento» = empresa asignada a esa persona cuyo estado, al empezar la quincena,
 //    era uno de QUINCENA.activos. Las que siguen sin contactar, aparcadas o cerradas no cuentan.
 //  - «La ha vuelto a tocar» = dentro de la quincena, esa persona ha escrito una nota o ha
-//    cambiado el estado (incluido cerrarla como beca o «No quieren»).
+//    cambiado el estado (incluido cerrarla como práctica o «No quieren»).
 //  - Quien no tenía ninguna empresa en seguimiento no cumple ni falla esa quincena.
 const QUINCENA = {
   inicio: '2026-09-28',                                      // lunes en que arranca la primera
@@ -509,7 +509,7 @@ function Auth() {
         <div className="absolute -bottom-40 -left-24 w-[26rem] h-[26rem] rounded-full bg-brand-300/15 blur-3xl" />
         <div className="relative"><LogoIaeste /></div>
         <div className="relative max-w-md">
-          <h2 className="text-4xl font-extrabold leading-tight tracking-tight">Cada empresa, cada contacto, cada beca.</h2>
+          <h2 className="text-4xl font-extrabold leading-tight tracking-tight">Cada empresa, cada contacto, cada práctica.</h2>
           <p className="mt-4 text-white/65 leading-relaxed">El CRM del equipo de empresas de IAESTE Málaga: reparte empresas, haz seguimiento y escribe a las empresas con plantillas de correo.</p>
           <ul className="mt-8 space-y-3 text-sm text-white/80">
             {[[Building2, 'Todas las empresas y su estado en un solo sitio'], [CalendarClock, 'Recordatorios de próximos contactos'], [Mail, 'Correo con las empresas y plantillas compartidas']].map(([I, t]) => (
@@ -517,7 +517,7 @@ function Auth() {
             ))}
           </ul>
         </div>
-        <p className="relative text-xs text-white/40">IAESTE Málaga · Telecomunicación</p>
+        <p className="relative text-xs text-white/40">IAESTE Málaga</p>
       </aside>
       <div className="flex items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-sm">
@@ -669,7 +669,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
       return
     }
     const conNota = nota ? { notas: nota } : {}
-    // Al pasar a «Beca conseguida» (o si un admin lo pide) se registran año y nº de prácticas
+    // Al pasar a «Práctica conseguida» (o si un admin lo pide) se registran año y nº de prácticas
     const registrar = isAdmin && ((f.estado === 'beca' && (nueva || empresa.estado !== 'beca')) || addPrac)
     const anio = parseInt(prac.anio, 10), num = parseInt(prac.num, 10)
     if (registrar && (!(anio >= 1990 && anio <= 2100) || !(num > 0))) {
@@ -705,7 +705,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
             ? `La empresa se ha guardado, pero ya había prácticas registradas en ${anio}. Si hay que corregir el número, pídeselo a un admin.`
             : `La empresa se ha guardado, pero no se han podido registrar las prácticas: ${error.message}`)
         }
-        mensaje = mensaje || `Prácticas ${anio} registradas ✓ · ya es empresa histórica`
+        mensaje = mensaje || `Prácticas ${anio} registradas ✓ · ya es empresa prioritaria`
       }
       onSaved(mensaje)
     } catch (e) {
@@ -724,7 +724,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
   const nombreResp = (id) => (id === me.id ? 'ti' : users.find((u) => u.id === id)?.nombre || null)
 
   const borrarPracticas = async (p) => {
-    if (!confirm(`¿Quitar las prácticas de ${p.anio || 'año sin registrar'}? Si no le quedan otras, dejará de ser histórica.`)) return
+    if (!confirm(`¿Quitar las prácticas de ${p.anio || 'año sin registrar'}? Si no le quedan otras, dejará de ser prioritaria.`)) return
     const { error } = await supabase.from('practicas').delete().eq('id', p.id)
     if (error) { setErr(error.message); return }
     onSaved('Registro de prácticas eliminado')
@@ -791,7 +791,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
             {empresa.historica && (
               <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
                 <Star className="w-4 h-4 mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
-                <span><strong>Empresa histórica</strong>{practicas.length ? <>: nos firmó prácticas en {textoPracticas(practicas)}.</> : '.'}</span>
+                <span><strong>Empresa prioritaria</strong>{practicas.length ? <>: nos firmó prácticas en {textoPracticas(practicas)}.</> : '.'}</span>
               </p>
             )}
             <div className="space-y-2">
@@ -820,7 +820,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="flex items-start gap-2">
                 <Star className="w-4 h-4 mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
-                <span><strong>Empresa histórica:</strong> nos firmó prácticas en {textoPracticas(practicas)}.</span>
+                <span><strong>Empresa prioritaria:</strong> nos firmó prácticas en {textoPracticas(practicas)}.</span>
               </p>
               {practicas.filter((p) => p.notas).map((p) => (
                 <p key={`n${p.id}`} className="text-xs text-amber-800 mt-1 pl-6">{p.notas}</p>
@@ -849,7 +849,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
                   <span>Esta empresa ya está en el CRM: <strong>{cifDup.nombre}</strong>{cifDup.responsable ? <> (asignada a {nombreResp(cifDup.responsable) || 'otra persona'})</> : ' (sin asignar)'}. No se pueden repetir CIF.</span>
                 </p>
               )}
-              <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, telecos…" /></div>
+              <div><Label>Sector</Label><Input value={f.sector} onChange={(e) => set('sector', e.target.value)} placeholder="Software, consultoría…" /></div>
               {camposContacto}
               {isAdmin ? (
                 <div>
@@ -903,19 +903,19 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
                 <div><Label>Año</Label><Input type="number" inputMode="numeric" min="1990" max="2100" value={prac.anio} onChange={(e) => setPrac((p) => ({ ...p, anio: e.target.value }))} /></div>
                 <div><Label>Nº de prácticas</Label><Input type="number" inputMode="numeric" min="1" value={prac.num} onChange={(e) => setPrac((p) => ({ ...p, num: e.target.value }))} /></div>
               </div>
-              <p className="text-xs text-emerald-800 mt-2">Al guardar, la empresa queda registrada como histórica con este año.</p>
+              <p className="text-xs text-emerald-800 mt-2">Al guardar, la empresa queda registrada como prioritaria con este año.</p>
               {addPrac && (
                 <button onClick={() => setAddPrac(false)} className="text-xs text-slate-500 hover:underline mt-1">Cancelar</button>
               )}
             </div>
           ) : !isAdmin && f.estado === 'beca' && empresa?.estado !== 'beca' ? (
             <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-              ¡Enhorabuena! Un admin registrará el año y el número de prácticas para dejarla como empresa histórica.
+              ¡Enhorabuena! Un admin registrará el año y el número de prácticas para dejarla como empresa prioritaria.
             </p>
           ) : isAdmin && (
             <button onClick={() => setAddPrac(true)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:underline">
-              <Star className="w-3.5 h-3.5" />{practicas.length ? 'Registrar prácticas de otro año' : 'Marcar como histórica (registrar prácticas de un año)'}
+              <Star className="w-3.5 h-3.5" />{practicas.length ? 'Registrar prácticas de otro año' : 'Marcar como prioritaria (registrar prácticas de un año)'}
             </button>
           )}
           <div>
@@ -1265,7 +1265,7 @@ function Actividad({ users, companies }) {
   const { lista } = calcularPuntos({ todo: todo || [], companies, users, desde, hasta })
 
   const exportar = () => {
-    const cab = ['Persona', 'Empresas contactadas (1 pt)', 'Empresas cerradas (3 pts)', 'Becas', 'Quincenas cumplidas', 'Puntos']
+    const cab = ['Persona', 'Empresas contactadas (1 pt)', 'Empresas cerradas (3 pts)', 'Prácticas', 'Quincenas cumplidas', 'Puntos']
     const csv = [cab, ...lista.map((d) => [d.nombre, d.contactadas, d.cerradas, d.becas, d.quincenas, d.puntos])]
       .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
@@ -1343,8 +1343,8 @@ function Actividad({ users, companies }) {
               <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
                 <th className="text-left font-medium pb-2">Persona</th>
                 <th className="font-medium pb-2" title="Empresas contactadas (1 punto)">Contact.</th>
-                <th className="font-medium pb-2" title="Empresas cerradas: más adelante, otra comunidad, ya no existe, no quieren o beca (3 puntos)">Cerradas</th>
-                <th className="font-medium pb-2">Becas</th>
+                <th className="font-medium pb-2" title="Empresas cerradas: más adelante, otra comunidad, ya no existe, no quieren o práctica (3 puntos)">Cerradas</th>
+                <th className="font-medium pb-2">Prácticas</th>
                 <th className="font-medium pb-2" title="Quincenas de seguimiento cumplidas">Quinc.</th>
                 <th className="font-medium pb-2 pl-3">Puntos</th>
               </tr>
@@ -1402,7 +1402,7 @@ function Actividad({ users, companies }) {
       <p className="text-xs text-slate-400 mt-4 leading-relaxed">
         Baremo actual (por empresa, según su estado actual y para quien la tiene asignada; máximo 3 por empresa):
         sin contactar 0 · no lo cogen, mail enviado o muy interesados 1 · para más adelante, otra comunidad, ya no existe,
-        no quieren o beca conseguida 3. Si una empresa vuelve a un estado anterior, sus puntos bajan. Las notas y las altas no puntúan.
+        no quieren o práctica conseguida 3. Si una empresa vuelve a un estado anterior, sus puntos bajan. Las notas y las altas no puntúan.
         Aparte, quincena de seguimiento cumplida {PUNTOS.quincena} (cada {QUINCENA.dias} días desde el {fechaCorta(QUINCENA.inicio)}:
         haber escrito una nota o cambiado el estado de todas tus empresas en seguimiento; se suma al cerrar la quincena).
         Se cambia en <code>PUNTOS_ESTADO</code> al principio de App.jsx. Haz clic en una persona para ver el desglose.
@@ -1475,7 +1475,7 @@ function Ranking({ users, me }) {
                   <div className="h-full bg-brand-900 rounded-full" style={{ width: `${(d.puntos / max) * 100}%` }} />
                 </div>
               </div>
-              {d.becas > 0 && <span className="hidden sm:inline text-xs text-emerald-700 font-medium shrink-0">{d.becas} beca{d.becas !== 1 ? 's' : ''}</span>}
+              {d.becas > 0 && <span className="hidden sm:inline text-xs text-emerald-700 font-medium shrink-0">{d.becas} práctica{d.becas !== 1 ? 's' : ''}</span>}
               <span className="w-12 text-right text-sm font-bold text-slate-900 tabular-nums shrink-0">{d.puntos}</span>
             </div>
           )
@@ -1483,7 +1483,7 @@ function Ranking({ users, me }) {
       </div>
       <p className="text-xs text-slate-500 px-1">
         Cada empresa que llevas puntúa según su estado actual: contactada (no lo cogen, mail enviado, muy interesados) 1 punto;
-        cerrada (para más adelante, otra comunidad, ya no existe, no quieren o beca conseguida) 3 puntos en total. Máximo 3 por empresa.
+        cerrada (para más adelante, otra comunidad, ya no existe, no quieren o práctica conseguida) 3 puntos en total. Máximo 3 por empresa.
         Quincena de seguimiento cumplida: +{PUNTOS.quincena}.
       </p>
     </div>
@@ -1704,7 +1704,7 @@ function Equipo({ users, companies, me, onChanged }) {
   const [asignando, setAsignando] = useState('')
   const cuenta = (id) => companies.filter((c) => c.responsable === id).length
   const sinContactar = (id) => companies.filter((c) => c.responsable === id && c.estado === 'sin_contactar').length
-  // Las históricas no entran en los lotes: solo se asignan a mano desde la ficha
+  // Las prioritarias no entran en los lotes: solo se asignan a mano desde la ficha
   const libres = companies.filter((c) => !c.responsable && c.estado === 'sin_contactar' && !c.historica)
 
   const asignarLote = async (u) => {
@@ -1725,7 +1725,7 @@ function Equipo({ users, companies, me, onChanged }) {
   }
 
   // Quitar lote: devuelve al bote común hasta LOTE empresas que esa persona tenga
-  // «Sin contactar». Las que ya tienen seguimiento y las históricas no se tocan.
+  // «Sin contactar». Las que ya tienen seguimiento y las prioritarias no se tocan.
   const quitables = (id) => companies.filter((c) => c.responsable === id && c.estado === 'sin_contactar' && !c.historica)
   const quitarLote = async (u) => {
     setErr('')
@@ -1780,7 +1780,7 @@ function Equipo({ users, companies, me, onChanged }) {
       <Actividad users={users} companies={companies} />
 
       <p className="text-xs text-slate-500 px-1">
-        Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar» (sin contar las históricas, que se asignan a mano desde su ficha).
+        Bote común: <strong>{libres.length}</strong> empresas sin asignar en estado «Sin contactar» (sin contar las prioritarias, que se asignan a mano desde su ficha).
         El botón <strong>+{LOTE}</strong> reparte las {LOTE} primeras a esa persona y <strong>−{LOTE}</strong> le quita {LOTE} de las que aún tiene sin contactar (vuelven al bote).
       </p>
 
@@ -2257,7 +2257,7 @@ export default function App() {
     ['Mis empresas', mias.length, Building2, 'text-brand-600 bg-brand-50'],
     ['Sin contactar', misSinContactar, Inbox, 'text-slate-600 bg-slate-100'],
     ['En seguimiento', mias.filter((c) => grupoDe('activo').estados.includes(c.estado)).length, Send, 'text-amber-600 bg-amber-50'],
-    ['Becas conseguidas', mias.filter((c) => c.estado === 'beca').length, Trophy, 'text-emerald-600 bg-emerald-50'],
+    ['Prácticas conseguidas', mias.filter((c) => c.estado === 'beca').length, Trophy, 'text-emerald-600 bg-emerald-50'],
   ]
   const botonesUsuario = (
     <>
@@ -2553,7 +2553,7 @@ export default function App() {
                         {c.historica && (
                           <span className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold"
                             title={`Nos dio prácticas en ${textoPracticas(c.practicas)}`}>
-                            <Star className="w-3 h-3 fill-amber-500 text-amber-500" />Histórica{c.practicas?.length ? ` · ${aniosPracticas(c.practicas)}` : ''}
+                            <Star className="w-3 h-3 fill-amber-500 text-amber-500" />Prioritaria{c.practicas?.length ? ` · ${aniosPracticas(c.practicas)}` : ''}
                           </span>
                         )}
                       </p>

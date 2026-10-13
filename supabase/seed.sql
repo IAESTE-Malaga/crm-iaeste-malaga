@@ -59,8 +59,8 @@ create temp table semilla (
 
 insert into semilla values
   -- Seguimiento activo
-  ('Telemática Avanzada S.L.',      'B10000001', 'Telecomunicaciones', 'Carmen Ruiz',     'rrhh@telematica-avanzada.example',   '+34 600 000 001', 'Calle Alcalá 120, Madrid',            'marta', 'interesados',   'Reunión con RRHH: quieren 2 plazas para verano.', 20, 3,    4),
-  ('Redes del Sur S.A.',            'A10000002', 'Telecomunicaciones', 'Jorge Molina',    'jmolina@redesdelsur.example',        '+34 600 000 002', 'Av. de la Constitución 5, Sevilla',    'marta', 'mail_enviado',  'Enviada la presentación por correo.',            12, null, null),
+  ('Telemática Avanzada S.L.',      'B10000001', 'Tecnología', 'Carmen Ruiz',     'rrhh@telematica-avanzada.example',   '+34 600 000 001', 'Calle Alcalá 120, Madrid',            'marta', 'interesados',   'Reunión con RRHH: quieren 2 plazas para verano.', 20, 3,    4),
+  ('Redes del Sur S.A.',            'A10000002', 'Tecnología', 'Jorge Molina',    'jmolina@redesdelsur.example',        '+34 600 000 002', 'Av. de la Constitución 5, Sevilla',    'marta', 'mail_enviado',  'Enviada la presentación por correo.',            12, null, null),
   ('Ingeniería Cobalto S.L.',       'B10000003', 'Ingeniería civil',   'Lucía Herrero',   'contacto@cobalto.example',           '+34 600 000 003', 'Calle Princesa 31, Madrid',           'marta', 'no_contesta',   'Llamé dos veces, no lo cogen.',                  15, -2,   null),
   ('Software Meridiano S.L.',       'B10000004', 'Software',           'Raúl Delgado',    'talento@meridiano.example',          '+34 600 000 005', 'Paseo de la Castellana 200, Madrid',  'pablo', 'interesados',   'Piden el perfil de un estudiante de Informática.', 25, 0,  2),
   ('Datos y Nubes S.A.',            'A10000005', 'Cloud',              'Elena Prieto',    'eprieto@datosynubes.example',        '+34 600 000 006', 'Calle Serrano 50, Madrid',            'pablo', 'mail_enviado',  'Mail enviado con la plantilla de contacto',      18, null, null),
@@ -72,7 +72,7 @@ insert into semilla values
   ('Automatismos Ebro S.L.',        'B10000011', 'Automatización',     'Rosa Martín',     'rmartin@automatismosebro.example',   '+34 600 000 012', 'Calle Coso 15, Zaragoza',             'irene', 'no_contesta',   'Sin respuesta.',                                  3,  null, null),
   -- Cerradas
   ('Consultora Atlas S.L.',         'B10000012', 'Consultoría',        'Diego Fuentes',   'dfuentes@atlas.example',             '+34 600 000 013', 'Calle Velázquez 10, Madrid',          'marta', 'beca',          '¡Firmada una práctica de 3 meses!',              35, null, null),
-  ('Construcciones Duero S.A.',     'A10000013', 'Construcción',       'Teresa Moreno',   'tmoreno@duero.example',              '+34 600 000 014', 'Calle Mayor 3, Zamora',               'pablo', 'rechazada',     'No aceptan becarios extranjeros este año.',      22, null, null),
+  ('Construcciones Duero S.A.',     'A10000013', 'Construcción',       'Teresa Moreno',   'tmoreno@duero.example',              '+34 600 000 014', 'Calle Mayor 3, Zamora',               'pablo', 'rechazada',     'No aceptan estudiantes extranjeros este año.',      22, null, null),
   ('Óptica Fotónica Galicia S.L.',  'B10000014', 'Fotónica',           'Iván Castro',     'icastro@fotonica-galicia.example',   '+34 600 000 015', 'Rúa do Vilar 20, Santiago',           'irene', 'otra_provincia','Les corresponde el comité de Galicia.',          16, null, null),
   ('Electrónica Retro S.A.',        'A10000015', 'Electrónica',        '',                '',                                   '+34 600 000 016', '',                                    'marta', 'no_existe',     'La empresa cerró en 2025.',                      28, null, null),
   ('Logística Centro S.L.',         'B10000016', 'Logística',          'Beatriz Ramos',   'bramos@logcentro.example',           '+34 600 000 017', 'Calle Toledo 90, Madrid',             'pablo', 'mas_adelante',  'Que volvamos a escribir en primavera.',          11, 150,  null),
@@ -89,7 +89,7 @@ insert into semilla values
   ('Cartografía Digital S.L.',      'B10000025', 'Geomática',          'Rubén Iglesias',  'riglesias@cartodigital.example',     '+34 600 000 026', 'Calle Bravo Murillo 70, Madrid',      null,    'sin_contactar', null, null, null, null),
   ('Drones Mediterráneo S.L.',      'B10000026', 'Aeroespacial',       'Eva Santos',      'esantos@dronesmed.example',          '+34 600 000 027', 'Av. Blasco Ibáñez 30, Valencia',      null,    'sin_contactar', null, null, null, null),
   ('Electromedicina Plus S.A.',     'A10000027', 'Biomédica',          'Javier Núñez',    'jnunez@electromed.example',          '+34 600 000 028', 'Calle Doctor Esquerdo 100, Madrid',   null,    'sin_contactar', null, null, null, null),
-  ('Fibra Óptica Cantábrica S.L.',  'B10000028', 'Telecomunicaciones', 'Marina Calvo',    'mcalvo@fibracant.example',           '+34 600 000 029', 'Calle Burgos 6, Santander',           null,    'sin_contactar', null, null, null, null),
+  ('Fibra Óptica Cantábrica S.L.',  'B10000028', 'Tecnología', 'Marina Calvo',    'mcalvo@fibracant.example',           '+34 600 000 029', 'Calle Burgos 6, Santander',           null,    'sin_contactar', null, null, null, null),
   ('Geotermia Canarias S.L.',       'B10000029', 'Energía',            'Tomás Herrera',   'therrera@geocanarias.example',       '+34 600 000 030', 'Calle Triana 15, Las Palmas',         null,    'sin_contactar', null, null, null, null),
   ('Hologramas 3D S.L.',            'B10000030', 'Software',           'Sara Gallego',    'sgallego@holo3d.example',            '+34 600 000 031', 'Calle Fuencarral 60, Madrid',         null,    'sin_contactar', null, null, null, null),
   ('Infraestructuras Ágora S.A.',   'A10000031', 'Ingeniería civil',   'Víctor Pardo',    'vpardo@agora.example',               '+34 600 000 032', 'Paseo de Recoletos 5, Madrid',        null,    'sin_contactar', null, null, null, null),
@@ -98,8 +98,8 @@ insert into semilla values
   ('Láseres Industriales S.A.',     'A10000034', 'Fotónica',           'Cristina Peña',   'cpena@laseres.example',              '+34 600 000 035', 'Calle Ferraz 22, Madrid',             null,    'sin_contactar', null, null, null, null),
   ('Motores Eléctricos Vega S.L.',  'B10000035', 'Automoción',         'Gonzalo Marín',   'gmarin@motoresvega.example',         '+34 600 000 036', 'Polígono Este 8, Valladolid',         null,    'sin_contactar', null, null, null, null),
   ('Nanotecnia Madrid S.L.',        'B10000036', 'Nanotecnología',     'Patricia Gómez',  'pgomez@nanotecnia.example',          '+34 600 000 037', 'Calle Ríos Rosas 18, Madrid',         null,    'sin_contactar', null, null, null, null),
-  -- Históricas sin asignar (nos dieron prácticas en años anteriores)
-  ('Ondas y Señales S.A.',          'A10000037', 'Telecomunicaciones', 'Manuel Ibáñez',   'mibanez@ondas.example',              '+34 600 000 038', 'Calle Orense 25, Madrid',             null,    'sin_contactar', null, null, null, null),
+  -- Prioritarias sin asignar (nos dieron prácticas en años anteriores)
+  ('Ondas y Señales S.A.',          'A10000037', 'Tecnología', 'Manuel Ibáñez',   'mibanez@ondas.example',              '+34 600 000 038', 'Calle Orense 25, Madrid',             null,    'sin_contactar', null, null, null, null),
   ('Puentes Atlántico S.L.',        'B10000038', 'Ingeniería civil',   'Inés Domínguez',  'idominguez@puentesatl.example',      '+34 600 000 039', 'Rúa Real 40, A Coruña',               null,    'sin_contactar', null, null, null, null);
 
 insert into public.empresas (nombre, cif, sector, contacto, email, telefono, direccion, responsable, estado, notas, proximo_contacto, creado, actualizado, actualizado_por)
@@ -112,7 +112,7 @@ select s.nombre, s.cif, s.sector, s.contacto, s.email, s.telefono, s.direccion,
 from semilla s
 left join public.profiles p on p.nombre like initcap(s.resp) || ' %';
 
--- ---------- Prácticas (empresas históricas) ----------
+-- ---------- Prácticas (empresas prioritarias) ----------
 insert into public.practicas (empresa_id, anio, num_practicas, notas, creado_por_nombre)
 select e.id, v.anio, v.num, v.notas, 'Ana García'
 from (values
