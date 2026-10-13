@@ -187,25 +187,18 @@ export const num = (x) => {
   return String(n).replace('.', ',')
 }
 
-// ---------- Campañas (cursos de septiembre a agosto) ----------
-export const PRIMERA_CAMPANA = 2025 // la 25/26 es la primera con datos (importada del Excel)
-export const PRIMERA_CAMPANA_CRM = 2026 // desde la 26/27 hay además puntos automáticos por empresas del CRM
+// ---------- Campañas (años naturales, de enero a diciembre) ----------
+export const PRIMERA_CAMPANA = 2026 // la campaña 2026 es la primera con datos (importada del Excel)
+export const PRIMERA_CAMPANA_CRM = 2026 // desde ahí hay además puntos automáticos por empresas del CRM
 
-export function campana(ini) {
-  return {
-    ini, id: `${ini}-${ini + 1}`,
-    label: `Curso ${String(ini).slice(2)}/${String(ini + 1).slice(2)}`,
-    desde: `${ini}-09-01`, hasta: `${ini + 1}-08-31`,
-  }
+export function campana(anio) {
+  return { anio, id: String(anio), label: `Campaña ${anio}`, desde: `${anio}-01-01`, hasta: `${anio}-12-31` }
 }
-export function campanaDe(iso) {
-  const y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7))
-  return campana(m >= 9 ? y : y - 1)
-}
+export const campanaDe = (iso) => campana(Number(iso.slice(0, 4)))
 // De la actual hacia atrás
 export function campanas(hoyIso) {
   const out = []
-  for (let ini = campanaDe(hoyIso).ini; ini >= PRIMERA_CAMPANA; ini--) out.push(campana(ini))
+  for (let a = campanaDe(hoyIso).anio; a >= PRIMERA_CAMPANA; a--) out.push(campana(a))
   return out
 }
 export const dentroDe = (camp, iso) => iso >= camp.desde && iso <= camp.hasta

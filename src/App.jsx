@@ -1514,7 +1514,7 @@ function Puntuacion({ users, me, isAdmin }) {
   const camps = campanas(hoy)
   const [campId, setCampId] = useState(camps[0].id)
   const camp = camps.find((c) => c.id === campId) || camps[0]
-  const conAuto = camp.ini >= PRIMERA_CAMPANA_CRM // antes de eso, el CRM no se usaba: solo hay apuntes
+  const conAuto = camp.anio >= PRIMERA_CAMPANA_CRM // antes de eso, el CRM no se usaba: solo hay apuntes
   const hastaAuto = camp.hasta < hoy ? camp.hasta : hoy
   const [datos, setDatos] = useState(null)
   const [err, setErr] = useState('')
@@ -1686,7 +1686,7 @@ function Puntuacion({ users, me, isAdmin }) {
         La clasificación ordena primero por nivel (<strong>Práctica</strong>: ha conseguido una práctica de empresa; <strong>Mínimo</strong>: {MINIMO_GT_EMPRESAS} puntos
         de GT Empresas; <strong>Pendiente</strong>: el resto), luego por puntos totales y luego por puntos de GT Empresas.
         Los puntos de GT Empresas incluyen los que se ganan solos al llevar empresas en el CRM (contactada 1, cerrada 3, +{PUNTOS.quincena} por quincena de seguimiento cumplida).
-        {isAdmin ? ' Pulsa una persona para ver su desglose y editarlo.' : ' De los demás solo se ve el total; tu desglose está arriba.'} Una campaña va del 1 de septiembre al 31 de agosto.
+        {isAdmin ? ' Pulsa una persona para ver su desglose y editarlo.' : ' De los demás solo se ve el total; tu desglose está arriba.'} Una campaña es un año natural, de enero a diciembre.
       </p>
 
       {modal?.tipo === 'apunte' && (

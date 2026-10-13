@@ -3,7 +3,7 @@
 -- ============================================================
 -- La puntuación de la rúbrica (comité local y grupos de trabajo) la anotan a mano los admins en la
 -- tabla "puntos"; a eso se le suman, en la app, los puntos automáticos por contactar empresas.
--- Una campaña es un curso (1 sep - 31 ago) y se deduce de la fecha del apunte: no hay tabla de campañas.
+-- Una campaña es un año natural (1 ene - 31 dic) y se deduce de la fecha del apunte: no hay tabla de campañas.
 
 -- ------------------------------------------------------------
 -- 1. Centro de cada socio

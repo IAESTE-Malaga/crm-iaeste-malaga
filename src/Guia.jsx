@@ -147,7 +147,7 @@ export default function Guia({ isAdmin }) {
 
       <Seccion id="puntuacion" icono={Trophy} titulo="Puntuación">
         <p>
-          La pestaña <B>Puntos</B> muestra tu puntuación de la <B>campaña</B> (de septiembre a agosto) y la clasificación del equipo.
+          La pestaña <B>Puntos</B> muestra tu puntuación de la <B>campaña</B> (el año natural, de enero a diciembre) y la clasificación del equipo.
           Tu puntuación se compone de dos partes:
         </p>
         <Lista>

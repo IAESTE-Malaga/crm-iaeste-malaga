@@ -64,7 +64,7 @@ Si te registras con un email nuevo, el correo de confirmación llega a **Mailpit
 
 ## Puntuaciones y centros
 
-Cada persona elige su **centro** (IDML, IFML, QMML, AQML o TLML) al registrarse; un admin puede cambiarlo en Equipo. La pestaña **Puntos** suma, por campaña (curso de septiembre a agosto), los puntos automáticos por empresas del CRM (cuentan como GT Empresas) y los apuntes que dan los admins según la rúbrica. El catálogo de conceptos vive en `src/puntuaciones.js`: ahí se edita cuando cambie la rúbrica.
+Cada persona elige su **centro** (IDML, IFML, QMML, AQML o TLML) al registrarse; un admin puede cambiarlo en Equipo. La pestaña **Puntos** suma, por campaña (año natural, de enero a diciembre), los puntos automáticos por empresas del CRM (cuentan como GT Empresas) y los apuntes que dan los admins según la rúbrica. El catálogo de conceptos vive en `src/puntuaciones.js`: ahí se edita cuando cambie la rúbrica.
 
 - Cada persona ve su desglose con motivos; de los demás, solo el total (RLS en la tabla `puntos` y RPC `puntuacion_resumen`).
 - Clasificación: nivel (Práctica > Mínimo de 30 pts de GT Empresas > Pendiente), total y GT Empresas.

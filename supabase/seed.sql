@@ -48,20 +48,20 @@ update public.profiles set centro = 'QMML' where id = '22222222-2222-4222-8222-2
 update public.profiles set centro = 'IFML' where id = '44444444-4444-4444-8444-444444444444';
 
 -- ---------- Puntuaciones ----------
--- Campaña 25/26 (ya cerrada) y apuntes de la actual. Los de "Socio Importado" no tienen cuenta:
+-- Campaña 2025 (ya cerrada) y apuntes de la actual (2026, año natural). Los de "Socio Importado" no tienen cuenta:
 -- se vinculan solos si alguien se registra con ese nombre.
 insert into public.puntos (usuario_id, fecha, categoria, concepto, descripcion, cantidad, puntos, motivo, creado_por) values
-  ('33333333-3333-4333-8333-333333333333', '2026-08-31', 'INI', 'antiguedad',        'Antigüedad (campañas completadas)', 1, 5,    '1 campaña: 5 pts.', '11111111-1111-4111-8111-111111111111'),
-  ('33333333-3333-4333-8333-333333333333', '2026-08-31', 'H',   'h_reunion_online',  'Reunirse con una empresa online',   null, 10, 'Reunión con Consultora Atlas', '11111111-1111-4111-8111-111111111111'),
-  ('33333333-3333-4333-8333-333333333333', '2026-08-31', 'C',   'c_comite',          'Reunión de comité local',           6, 12,   null, '11111111-1111-4111-8111-111111111111'),
-  ('44444444-4444-4444-8444-444444444444', '2026-08-31', 'H',   'h_practica_nueva',  'Conseguir práctica de empresa nueva', null, 50, 'Práctica en Smart City Labs', '11111111-1111-4111-8111-111111111111'),
+  ('33333333-3333-4333-8333-333333333333', '2025-12-31', 'INI', 'antiguedad',        'Antigüedad (campañas completadas)', 1, 5,    '1 campaña: 5 pts.', '11111111-1111-4111-8111-111111111111'),
+  ('33333333-3333-4333-8333-333333333333', '2025-12-31', 'H',   'h_reunion_online',  'Reunirse con una empresa online',   null, 10, 'Reunión con Consultora Atlas', '11111111-1111-4111-8111-111111111111'),
+  ('33333333-3333-4333-8333-333333333333', '2025-12-31', 'C',   'c_comite',          'Reunión de comité local',           6, 12,   null, '11111111-1111-4111-8111-111111111111'),
+  ('44444444-4444-4444-8444-444444444444', '2025-12-31', 'H',   'h_practica_nueva',  'Conseguir práctica de empresa nueva', null, 50, 'Práctica en Smart City Labs', '11111111-1111-4111-8111-111111111111'),
   ('11111111-1111-4111-8111-111111111111', '2026-09-20', 'A',   'a_presidencia',     'Presidencia',                       1, 10,   'Primer tramo de la campaña', '22222222-2222-4222-8222-222222222222'),
   ('33333333-3333-4333-8333-333333333333', '2026-10-05', 'F',   'f_stand_hora',      'Stand o evento presencial: horas',  3, 6,    'Feria de Empleo', '11111111-1111-4111-8111-111111111111'),
   ('33333333-3333-4333-8333-333333333333', '2026-10-08', 'H',   'h_reunion_presencial', 'Reunirse con una empresa presencialmente', null, 15, 'Reunión en Telemática Avanzada', '11111111-1111-4111-8111-111111111111'),
   ('44444444-4444-4444-8444-444444444444', '2026-10-09', 'I',   'i_cartel',          'Cartel',                            null, 4, 'Cartel de la charla informativa', '22222222-2222-4222-8222-222222222222'),
   ('55555555-5555-4555-8555-555555555555', '2026-10-10', 'E',   'e_horas',           'Horas de despacho',                 4, 4,    null, '11111111-1111-4111-8111-111111111111');
 insert into public.puntos (socio_nombre, socio_centro, fecha, categoria, concepto, descripcion, cantidad, puntos, motivo) values
-  ('Socio Importado Prueba', 'TLML', '2026-08-31', 'H', 'importado', 'GT Empresas', null, 40, 'Apunte sin cuenta: se vincula al registrarse');
+  ('Socio Importado Prueba', 'TLML', '2025-12-31', 'H', 'importado', 'GT Empresas', null, 40, 'Apunte sin cuenta: se vincula al registrarse');
 
 -- ---------- Empresas ----------
 -- El historial se genera aquí abajo a mano (con fechas en el pasado), así que se apaga el
