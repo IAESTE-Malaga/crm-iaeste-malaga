@@ -10,7 +10,6 @@ let ultimaSync = 0 // compartido entre fichas: no se pide a Gmail más de una ve
 
 // Pide al servicio que lea el buzón (IMAP) ahora. Si falla, se sigue mostrando lo que ya hay en la base de datos.
 async function sincronizar(forzar = false) {
-  if (!API && !import.meta.env.DEV) return
   if (!forzar && Date.now() - ultimaSync < SYNC_MIN_MS) return
   ultimaSync = Date.now()
   try {
@@ -144,34 +143,30 @@ export default function EmailThread({ empresa }) {
         </ol>
       )}
 
-      {!API ? (
-        <p className="text-xs text-slate-500">El envío de correos no está configurado (falta VITE_EMAIL_API_URL).</p>
-      ) : (
-        <div className="space-y-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {opciones.length > 1 || (opciones.length === 1 && opciones[0] !== para) ? (
-              <select value={para} onChange={(e) => { setPara(e.target.value); setTocado(true) }}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
-                {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            ) : (
-              <p className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-600 truncate">{para || 'Sin email en la ficha'}</p>
-            )}
-            <input value={asunto} onChange={(e) => { setAsunto(e.target.value); setTocado(true) }} maxLength={200} placeholder="Asunto"
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500" />
-          </div>
-          <textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={4} maxLength={20000} placeholder="Escribe tu respuesta…"
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }}
-            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 resize-y" />
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] text-slate-400">Se envía desde el buzón compartido de IAESTE · Ctrl+Enter para enviar</p>
-            <button onClick={enviar} disabled={enviando || !para || !cuerpo.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-900 hover:bg-brand-700 text-white text-xs font-semibold disabled:opacity-50">
-              <Send className="w-3.5 h-3.5" />{enviando ? 'Enviando…' : 'Enviar'}
-            </button>
-          </div>
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {opciones.length > 1 || (opciones.length === 1 && opciones[0] !== para) ? (
+            <select value={para} onChange={(e) => { setPara(e.target.value); setTocado(true) }}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+              {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <p className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-600 truncate">{para || 'Sin email en la ficha'}</p>
+          )}
+          <input value={asunto} onChange={(e) => { setAsunto(e.target.value); setTocado(true) }} maxLength={200} placeholder="Asunto"
+            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500" />
         </div>
-      )}
+        <textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={4} maxLength={20000} placeholder="Escribe tu respuesta…"
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }}
+          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 resize-y" />
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] text-slate-400">Se envía desde el buzón compartido de IAESTE · Ctrl+Enter para enviar</p>
+          <button onClick={enviar} disabled={enviando || !para || !cuerpo.trim()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-900 hover:bg-brand-700 text-white text-xs font-semibold disabled:opacity-50">
+            <Send className="w-3.5 h-3.5" />{enviando ? 'Enviando…' : 'Enviar'}
+          </button>
+        </div>
+      </div>
       {err && <p className="mt-2 text-xs text-rose-600 flex items-start gap-1"><AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{err}</p>}
       {aviso && <p className="mt-2 text-xs text-emerald-700">{aviso}</p>}
     </div>

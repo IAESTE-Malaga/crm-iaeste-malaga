@@ -184,13 +184,6 @@ const INICIO_CURSO = () => {
 }
 const fechaCorta = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : ''
 
-// Enlace a la ventana de redactar de Gmail (no depende de tener un cliente de correo configurado).
-// Usa la cuenta /u/0/ (la primera sesión de Gmail abierta en el navegador).
-const gmailUrl = (to, asunto = '', cuerpo = '') =>
-  `https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=1&to=${encodeURIComponent(to || '')}` +
-  (asunto ? `&su=${encodeURIComponent(asunto)}` : '') +
-  (cuerpo ? `&body=${encodeURIComponent(cuerpo)}` : '')
-
 // ---------- Plantilla de contacto (equipo de empresas) ----------
 // Se copia al portapapeles como HTML (con formato y logo) y se abre Gmail con destinatario y asunto:
 // el miembro solo tiene que pegar con Ctrl+V. Los adjuntos se añaden a mano en Gmail.
@@ -266,25 +259,6 @@ const htmlATexto = (html) => {
   const d = document.createElement('div')
   d.innerHTML = html.replace(/<\/(p|li|div)>/g, '</$1>\n').replace(/<li>/g, '<li>- ')
   return d.innerText.replace(/\n{3,}/g, '\n\n').trim()
-}
-
-// Copia la plantilla con formato al portapapeles. Devuelve true si se ha podido.
-const copiarPlantilla = async (emp, yo) => {
-  const html = plantillaHtml(emp, yo)
-  const texto = htmlATexto(html)
-  try {
-    if (window.ClipboardItem && navigator.clipboard?.write) {
-      await navigator.clipboard.write([new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([texto], { type: 'text/plain' }),
-      })])
-      return true
-    }
-    await navigator.clipboard.writeText(texto)
-    return true
-  } catch {
-    return false
-  }
 }
 
 // ---------- UI básicos ----------
@@ -700,51 +674,16 @@ function Auth() {
   )
 }
 
-// ---------- Acciones rápidas: llamar / email / plantilla ----------
-function AccionesContacto({ emp, yo, onEmail }) {
-  const [copiada, setCopiada] = useState(null) // null | 'ok' | 'error'
-  if (!emp.telefono && !emp.email) return null
-  const tel = String(emp.telefono || '').replace(/\s/g, '')
-  const usarPlantilla = () => {
-    // Se llama dentro del clic (antes de que se abra la pestaña de Gmail) para que el navegador permita copiar
-    copiarPlantilla(emp, yo).then((ok) => {
-      setCopiada(ok ? 'ok' : 'error')
-      setTimeout(() => setCopiada(null), 8000)
-      // Al enviar el correo se marca la empresa y se cierra la ficha
-      onEmail?.(ok ? 'plantilla' : 'plantilla_error')
-    })
-  }
+// ---------- Acción rápida: llamar (el correo se lee y se envía desde el hilo de la ficha, no desde fuera) ----------
+function AccionesContacto({ emp }) {
+  if (!emp.telefono) return null
+  const tel = String(emp.telefono).replace(/\s/g, '')
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
-        {emp.telefono && (
-          <a href={`tel:${tel}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50/80">
-            <Phone className="w-3.5 h-3.5" />Llamar
-          </a>
-        )}
-        {emp.email && (
-          <>
-            <a href={gmailUrl(emp.email)} target="_blank" rel="noopener noreferrer"
-              onClick={() => onEmail?.('email')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50/80">
-              <Mail className="w-3.5 h-3.5" />Email
-            </a>
-            <a href={gmailUrl(emp.email, asuntoPlantilla(emp))} target="_blank" rel="noopener noreferrer"
-              title="Copia la plantilla con formato y abre Gmail: pega con Ctrl+V en el cuerpo"
-              onClick={usarPlantilla}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-200 bg-brand-50 text-xs font-medium text-brand-600 hover:bg-brand-100">
-              <Send className="w-3.5 h-3.5" />Plantilla de contacto
-            </a>
-          </>
-        )}
-      </div>
-      {copiada === 'ok' && (
-        <p className="text-xs text-emerald-700">Plantilla copiada. En Gmail, haz clic en el cuerpo del correo y pega con Ctrl+V (Cmd+V en Mac). Recuerda adjuntar la presentación y el modelo de convenio.</p>
-      )}
-      {copiada === 'error' && (
-        <p className="text-xs text-red-600">No se ha podido copiar la plantilla. Vuelve a pulsar el botón con esta pestaña en primer plano.</p>
-      )}
+    <div className="flex flex-wrap gap-2">
+      <a href={`tel:${tel}`}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50/80">
+        <Phone className="w-3.5 h-3.5" />Llamar
+      </a>
     </div>
   )
 }
@@ -864,21 +803,6 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
     onDeleted()
   }
 
-  // Al pulsar «Email» o «Plantilla de contacto» en una empresa existente: se guarda la ficha,
-  // si estaba sin contactar / sin respuesta pasa a «Mail enviado» (cuenta como contacto) y se cierra.
-  const alEnviarCorreo = (tipo) => {
-    if (nueva) return
-    const pasa = ['sin_contactar', 'no_contesta'].includes(f.estado)
-    const cambios = pasa ? { estado: 'mail_enviado' } : {}
-    const notaAuto = pasa ? (tipo === 'email' ? 'Mail enviado' : 'Mail enviado con la plantilla de contacto') : ''
-    const msg = tipo === 'plantilla'
-      ? 'Plantilla copiada: pégala en Gmail con Ctrl+V' + (pasa ? ' · marcada como Mail enviado' : '')
-      : tipo === 'plantilla_error'
-        ? 'No se pudo copiar la plantilla: escríbela a mano en Gmail' + (pasa ? ' · marcada como Mail enviado' : '')
-        : (pasa ? 'Marcada como Mail enviado ✓' : 'Guardado ✓')
-    guardar(cambios, msg, notaAuto)
-  }
-
   // Línea de seguimientos: cada cambio de estado con su nota, cada nota suelta y el resto de movimientos
   const seguimientos = (() => {
     if (!hist) return null
@@ -911,7 +835,7 @@ function EmpresaModal({ empresa, users, isAdmin, me, todas = [], onSaved, onDele
         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}`} target="_blank" rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-brand-600 hover:underline"><MapPin className="w-3.5 h-3.5" />Ver en el mapa</a>
       )}
-      <AccionesContacto emp={f} yo={me.nombre} onEmail={alEnviarCorreo} />
+      <AccionesContacto emp={f} />
     </>
   )
 
