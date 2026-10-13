@@ -157,7 +157,7 @@ export default function Guia({ isAdmin }) {
         <p>
           De los demás solo ves el total. La clasificación ordena primero por nivel: <B>Práctica</B> (has conseguido una práctica de empresa), <B>Mínimo</B> (30 puntos de GT Empresas,
           que es lo que hace falta para optar a prácticas en primer plazo) y <B>Pendiente</B>; después por puntos totales y por puntos de GT Empresas.
-          Al empezar una campaña se suman la <B>antigüedad</B> (5 por campaña) y el <B>arrastre</B> de la mitad de los puntos de la anterior (nada si tenías menos de 10).
+          Al empezar una campaña se suman la <B>antigüedad</B> (5 por campaña) y el <B>arrastre</B> de la mitad de los puntos de la anterior (nada si tenías menos de 10 o disfrutaste una práctica).
         </p>
         <p>Si ves algún punto que no te cuadra, pregunta a un admin: puede editar el apunte.</p>
       </Seccion>
