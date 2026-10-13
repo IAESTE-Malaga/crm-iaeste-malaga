@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText } from 'lucide-react'
 import { supabase } from './supabase'
-import { asuntoPlantilla, plantillaTexto } from './plantilla'
+import { aplicarVariables } from './plantillas'
 
 // URL del servicio de correo (server/). En desarrollo, el puerto por defecto; en producción hay que definirla.
 const API = (import.meta.env.VITE_EMAIL_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '')
@@ -37,6 +37,7 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
   const [enviando, setEnviando] = useState(false)
   const [aviso, setAviso] = useState('')
   const [sincronizando, setSincronizando] = useState(false)
+  const [plantillas, setPlantillas] = useState([])
   const [tocado, setTocado] = useState(false)    // si el usuario ya ha escrito el asunto/destinatario, no se pisa
   const fin = useRef(null)
 
@@ -59,6 +60,12 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
     setSincronizando(false)
   }, [cargar])
 
+  // Plantillas compartidas (sección «Plantillas»). Si no cargan, el selector simplemente queda vacío.
+  useEffect(() => {
+    supabase.from('plantillas').select('id, nombre, asunto, cuerpo').order('nombre')
+      .then(({ data }) => setPlantillas(data || []))
+  }, [])
+
   useEffect(() => {
     actualizar()
     const t = setInterval(cargar, REFRESCO_MS)
@@ -76,18 +83,23 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
     if (tocado || correos === null) return
     const ultimoEntrante = [...correos].reverse().find((c) => c.direccion === 'entrante')
     setPara(ultimoEntrante?.remitente || opciones[0] || '')
-    setAsunto(ultimo ? conRe(ultimo.asunto) : `IAESTE Madrid - Prácticas internacionales para ${empresa.nombre}`)
+    setAsunto(ultimo ? conRe(ultimo.asunto) : `IAESTE Málaga - Prácticas internacionales para ${empresa.nombre}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [correos, tocado])
 
   // Al abrir o llegar mensajes nuevos, bajar al último
   useEffect(() => { fin.current?.scrollIntoView({ block: 'nearest' }) }, [correos?.length])
 
-  // Rellena asunto y mensaje con la plantilla de contacto (texto plano; se puede editar antes de enviar)
-  const usarPlantilla = () => {
+  // Rellena asunto y mensaje con la plantilla elegida (se puede editar antes de enviar).
+  // Una plantilla sin asunto deja el que ya hay (p. ej. «Re: …» al responder).
+  const usarPlantilla = (id) => {
+    const p = plantillas.find((x) => x.id === id)
+    if (!p) return
     if (cuerpo.trim() && !confirm('Se sustituirá lo que has escrito por la plantilla. ¿Continuar?')) return
-    setAsunto(asuntoPlantilla(empresa))
-    setCuerpo(plantillaTexto(empresa, yo))
+    const datos = { empresa, yo }
+    const asuntoNuevo = aplicarVariables(p.asunto, datos).trim()
+    if (asuntoNuevo) setAsunto(asuntoNuevo)
+    setCuerpo(aplicarVariables(p.cuerpo, datos))
     setTocado(true)
   }
 
@@ -165,6 +177,14 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
           )}
           <input value={asunto} onChange={(e) => { setAsunto(e.target.value); setTocado(true) }} maxLength={200} placeholder="Asunto"
             className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500" />
+        </div>
+        <div className="flex items-center gap-2">
+          <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <select value="" onChange={(e) => usarPlantilla(e.target.value)} disabled={plantillas.length === 0} aria-label="Usar plantilla"
+            className="flex-1 min-w-0 px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white text-slate-600 disabled:opacity-60">
+            <option value="">{plantillas.length ? 'Usar plantilla…' : 'No hay plantillas (créalas en la sección Plantillas)'}</option>
+            {plantillas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
         </div>
         <textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={4} maxLength={20000} placeholder="Escribe tu respuesta…"
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }}

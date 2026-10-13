@@ -1,6 +1,6 @@
-# CRM IAESTE Madrid
+# CRM IAESTE Málaga
 
-Aplicación web para gestionar el contacto con empresas del comité: quién habla con quién, en qué punto está cada conversación, cuándo toca el siguiente seguimiento y un ranking de puntos del equipo.
+Aplicación web para gestionar el contacto con empresas del comité: quién habla con quién, en qué punto está cada conversación, cuándo toca el siguiente seguimiento y plantillas de correo compartidas y, para los admins, un ranking de puntos del equipo.
 
 **Stack:** React 18 + Vite + Tailwind CSS v4 + Supabase (Auth + Postgres con Row Level Security). Despliegue íntegro en Vercel (web + API de correo) y Supabase.
 
@@ -81,7 +81,6 @@ npm run correo           # http://localhost:8787 — en local envía a Mailpit
    - `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` (Project Settings → API → *anon/publishable key*).
    - `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` (**secreta**, sin prefijo `VITE_`).
    - `GMAIL_USER`, `GMAIL_APP_PASSWORD` y, opcional, `MAIL_FROM_NAME` (ver [`server/README.md`](server/README.md) para crear la contraseña de aplicación).
-   - Opcional: `VITE_PUBLIC_URL` con la URL pública para el logo de la plantilla de correo.
    No definas `VITE_EMAIL_API_URL`: sin ella el navegador usa `/api/...` del mismo dominio.
    Los correos entrantes **no se leen en segundo plano**: se buscan en Gmail cuando alguien abre los correos de una empresa o pulsa el botón de actualizar.
 6. Regístrate tú primero: serás admin. Después los demás se registran y desde la pestaña **Equipo** les asignas empresas o los haces admin.

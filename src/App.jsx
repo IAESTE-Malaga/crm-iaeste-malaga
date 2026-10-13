@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, Fragment } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { supabase } from './supabase'
 import EmailThread from './EmailThread'
+import { VARIABLES, aplicarVariables } from './plantillas'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users,
+  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users, FileText,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -502,14 +503,14 @@ function Auth() {
         <div className="relative"><LogoIaeste /></div>
         <div className="relative max-w-md">
           <h2 className="text-4xl font-extrabold leading-tight tracking-tight">Cada empresa, cada contacto, cada beca.</h2>
-          <p className="mt-4 text-white/65 leading-relaxed">El CRM del equipo de empresas de IAESTE Madrid: reparte empresas, haz seguimiento y sube en el ranking.</p>
+          <p className="mt-4 text-white/65 leading-relaxed">El CRM del equipo de empresas de IAESTE Málaga: reparte empresas, haz seguimiento y escribe a las empresas con plantillas de correo.</p>
           <ul className="mt-8 space-y-3 text-sm text-white/80">
-            {[[Building2, 'Todas las empresas y su estado en un solo sitio'], [CalendarClock, 'Recordatorios de próximos contactos'], [Trophy, 'Puntos y ranking para todo el equipo']].map(([I, t]) => (
+            {[[Building2, 'Todas las empresas y su estado en un solo sitio'], [CalendarClock, 'Recordatorios de próximos contactos'], [Mail, 'Correo con las empresas y plantillas compartidas']].map(([I, t]) => (
               <li key={t} className="flex items-center gap-3"><span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center"><I className="w-4 h-4" /></span>{t}</li>
             ))}
           </ul>
         </div>
-        <p className="relative text-xs text-white/40">IAESTE Madrid · Telecomunicación</p>
+        <p className="relative text-xs text-white/40">IAESTE Málaga · Telecomunicación</p>
       </aside>
       <div className="flex items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-sm">
@@ -1395,7 +1396,7 @@ function Actividad({ users, companies }) {
     </div>
   )
 }
-// ---------- Ranking (visible para todo el equipo) ----------
+// ---------- Ranking (solo admin) ----------
 const INICIO_MES = () => { const d = new Date(); return isoDia(new Date(d.getFullYear(), d.getMonth(), 1)) }
 function Ranking({ users, me }) {
   const [periodo, setPeriodo] = useState('mes')
@@ -1472,6 +1473,158 @@ function Ranking({ users, me }) {
         Quincena de seguimiento cumplida: +{PUNTOS.quincena}.
       </p>
     </div>
+  )
+}
+
+// ---------- Plantillas de correo (todo el equipo) ----------
+// Se guardan en la tabla `plantillas` y se eligen en la caja de redacción del hilo de correo (EmailThread).
+// Editar o borrar: su autor o un admin (RLS).
+function Plantillas({ users, me, isAdmin }) {
+  const [lista, setLista] = useState(null)
+  const [err, setErr] = useState('')
+  const [edit, setEdit] = useState(null) // null | 'nueva' | plantilla
+
+  const cargar = useCallback(async () => {
+    const { data, error } = await supabase.from('plantillas')
+      .select('id, nombre, asunto, cuerpo, creado_por, actualizado').order('nombre')
+    if (error) {
+      setErr(['PGRST205', '42P01'].includes(error.code)
+        ? 'Falta la tabla de plantillas en la base de datos: aplica las migraciones pendientes (npx supabase db push).'
+        : `No se han podido cargar las plantillas: ${error.message}`)
+      setLista((l) => l ?? [])
+      return
+    }
+    setErr(''); setLista(data)
+  }, [])
+  useEffect(() => { cargar() }, [cargar])
+
+  const puede = (p) => isAdmin || p.creado_por === me.id
+  const autor = (p) => (p.creado_por ? users.find((u) => u.id === p.creado_por)?.nombre || 'Alguien del equipo' : 'De serie')
+
+  const borrar = async (p) => {
+    if (!confirm(`¿Eliminar la plantilla «${p.nombre}»? No se puede deshacer.`)) return
+    const { error, count } = await supabase.from('plantillas').delete({ count: 'exact' }).eq('id', p.id)
+    if (error || !count) { setErr(error?.message || 'No se ha podido eliminar la plantilla.'); return }
+    await cargar()
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <p className="text-sm text-slate-500 max-w-xl">
+          Textos reutilizables para los correos a empresas. Se eligen en la caja de redacción de cada empresa y puedes retocarlos antes de enviar.
+          Variables: {VARIABLES.map((v, i) => <Fragment key={v.id}>{i > 0 && ', '}<code className="text-xs bg-slate-100 rounded px-1 py-0.5" title={v.desc}>{`{{${v.id}}}`}</code></Fragment>)}.
+        </p>
+        <Btn onClick={() => setEdit('nueva')}><Plus className="w-4 h-4" />Nueva plantilla</Btn>
+      </div>
+
+      {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+      {lista === null ? <Cargando /> : lista.length === 0 ? (
+        !err && <Vacio icono={FileText}>Todavía no hay plantillas. Crea la primera con «Nueva plantilla».</Vacio>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {lista.map((p) => (
+            <div key={p.id} className="card p-4 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-900 truncate">{p.nombre}</h3>
+                  <p className="text-xs text-slate-400">{autor(p)} · {fechaCorta(p.actualizado.slice(0, 10))}</p>
+                </div>
+                {puede(p) && (
+                  <div className="flex gap-0.5 shrink-0">
+                    <button onClick={() => setEdit(p)} title="Editar" aria-label={`Editar ${p.nombre}`} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => borrar(p)} title="Eliminar" aria-label={`Eliminar ${p.nombre}`} className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                )}
+              </div>
+              {p.asunto && <p className="text-xs font-semibold text-slate-600 truncate">Asunto: {p.asunto}</p>}
+              <p className="text-xs text-slate-500 whitespace-pre-line line-clamp-4 break-words">{p.cuerpo}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {edit && <PlantillaModal plantilla={edit === 'nueva' ? null : edit} me={me} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); cargar() }} />}
+    </div>
+  )
+}
+
+function PlantillaModal({ plantilla, me, onClose, onSaved }) {
+  const [nombre, setNombre] = useState(plantilla?.nombre || '')
+  const [asunto, setAsunto] = useState(plantilla?.asunto || '')
+  const [cuerpo, setCuerpo] = useState(plantilla?.cuerpo || '')
+  const [previa, setPrevia] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [err, setErr] = useState('')
+  const area = useRef(null)
+  const ejemplo = { empresa: { nombre: 'Ejemplo S.L.', contacto: 'Ana' }, yo: me.nombre }
+
+  // Inserta la variable donde esté el cursor del mensaje
+  const insertar = (id) => {
+    const el = area.current
+    const ini = el?.selectionStart ?? cuerpo.length
+    const fin = el?.selectionEnd ?? cuerpo.length
+    const v = `{{${id}}}`
+    setCuerpo(cuerpo.slice(0, ini) + v + cuerpo.slice(fin))
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(ini + v.length, ini + v.length) })
+  }
+
+  const guardar = async () => {
+    setErr('')
+    if (!nombre.trim()) { setErr('Ponle un nombre a la plantilla.'); return }
+    if (!cuerpo.trim()) { setErr('Escribe el mensaje.'); return }
+    setGuardando(true)
+    const datos = { nombre: nombre.trim(), asunto: asunto.trim(), cuerpo }
+    const { error } = plantilla
+      ? await supabase.from('plantillas').update({ ...datos, actualizado: new Date().toISOString() }).eq('id', plantilla.id)
+      : await supabase.from('plantillas').insert({ ...datos, creado_por: me.id })
+    setGuardando(false)
+    if (error) { setErr(error.message); return }
+    onSaved()
+  }
+
+  return (
+    <Modal onClose={onClose} ancho="max-w-2xl">
+      <ModalHead onClose={onClose}>{plantilla ? 'Editar plantilla' : 'Nueva plantilla'}</ModalHead>
+      <div className="p-6 space-y-4">
+        <div>
+          <Label>Nombre</Label>
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={80} placeholder="Ej.: Primer contacto, Seguimiento tras la llamada…" autoFocus />
+        </div>
+        <div>
+          <Label>Asunto (opcional)</Label>
+          <Input value={asunto} onChange={(e) => setAsunto(e.target.value.replace(/[\r\n]+/g, ' '))} maxLength={200} placeholder="IAESTE Málaga - Prácticas internacionales para {{empresa}}" />
+        </div>
+        <div>
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+            <Label>Mensaje</Label>
+            <div className="flex items-center gap-1.5 flex-wrap -mt-1.5">
+              {!previa && VARIABLES.map((v) => (
+                <button key={v.id} type="button" onClick={() => insertar(v.id)} title={`${v.desc}: se inserta donde esté el cursor`} className={miniBtn}>{`{{${v.id}}}`}</button>
+              ))}
+              <button type="button" onClick={() => setPrevia((x) => !x)} className={chipPeriodo(previa)}>Vista previa</button>
+            </div>
+          </div>
+          {previa ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
+              <p className="text-xs text-slate-400 mb-2">Con datos de ejemplo (empresa «Ejemplo S.L.», contacto «Ana»).</p>
+              {aplicarVariables(asunto, ejemplo).trim() && <p className="font-semibold mb-2">Asunto: {aplicarVariables(asunto, ejemplo).trim()}</p>}
+              {aplicarVariables(cuerpo, ejemplo)}
+            </div>
+          ) : (
+            <textarea ref={area} value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={14} maxLength={20000}
+              placeholder={'Buenos días {{contacto}},\n\nMi nombre es {{yo}} y …'}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 resize-y" />
+          )}
+          <p className="text-[11px] text-slate-400 mt-1">Los correos se envían como texto plano. Si una variable no tiene valor (p. ej. la empresa no tiene contacto) se omite.</p>
+        </div>
+        {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+        <div className="flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={guardar} disabled={guardando}><Save className="w-4 h-4" />{guardando ? 'Guardando…' : 'Guardar'}</Btn>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -2016,11 +2169,12 @@ export default function App() {
 
   const NAV = [
     ['empresas', 'Empresas', Building2],
-    ...(isAdmin ? [['seguimiento', 'Seguimiento', History], ['equipo', 'Equipo', Users]] : []),
-    ['ranking', 'Ranking', Trophy],
+    ['plantillas', 'Plantillas', FileText],
+    ...(isAdmin ? [['seguimiento', 'Seguimiento', History], ['equipo', 'Equipo', Users], ['ranking', 'Ranking', Trophy]] : []),
   ]
   const TITULOS = {
     empresas: ['Empresas', isAdmin ? 'Todas las empresas del equipo' : 'Tus empresas y las del equipo'],
+    plantillas: ['Plantillas', 'Textos para los correos a empresas'],
     seguimiento: ['Seguimiento', 'Últimos cambios y notas del equipo'],
     equipo: ['Equipo', 'Personas, reparto de empresas y puntos'],
     ranking: ['Ranking', 'Quién lidera el equipo'],
@@ -2052,7 +2206,7 @@ export default function App() {
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col bg-brand-900 text-white z-40">
         <div className="px-6 pt-7 pb-6 border-b border-white/10">
           <div className="flex items-center gap-2.5"><LogoIaeste /></div>
-          <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">Madrid · CRM</p>
+          <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">Málaga · CRM</p>
         </div>
         <nav className="flex-1 px-3 py-5 space-y-1">
           {NAV.map(([id, label, Icono]) => (
@@ -2117,7 +2271,9 @@ export default function App() {
               </span>
             </Aviso>
           )}
-        {tab === 'ranking' ? (
+        {tab === 'plantillas' ? (
+          <Plantillas users={users} me={me} isAdmin={isAdmin} />
+        ) : tab === 'ranking' && isAdmin ? (
           <Ranking users={users} me={me} />
         ) : tab === 'seguimiento' && isAdmin ? (
           <Seguimiento users={users} companies={companies} version={claveEmpresas} onAbrir={setModal} />

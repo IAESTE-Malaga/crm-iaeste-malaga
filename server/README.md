@@ -17,7 +17,7 @@ Navegador (React) ──token de sesión──► POST /api/emails/send ──SM
 
 ## 1. Preparar la cuenta de Gmail
 
-1. Crea (o elige) la cuenta compartida, p. ej. `crm.iaestemadrid@gmail.com`.
+1. Crea (o elige) la cuenta compartida, p. ej. `crm.iaestemalaga@gmail.com`.
 2. Activa la **verificación en dos pasos**: <https://myaccount.google.com/security>.
 3. Crea una **contraseña de aplicación**: <https://myaccount.google.com/apppasswords> → nombre "CRM" → copia los 16 caracteres. (Si la opción no aparece: falta la verificación en dos pasos, o es una cuenta de Workspace cuyo administrador la ha desactivado.)
 4. IMAP ya viene activado en cuentas nuevas. Si no: Gmail → Configuración → *Reenvío y correo POP/IMAP* → Activar IMAP.

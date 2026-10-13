@@ -15,7 +15,7 @@ export const config = {
 
   gmailUser: req('GMAIL_USER').toLowerCase(),
   gmailPass: req('GMAIL_APP_PASSWORD').replace(/\s+/g, ''), // Google la muestra con espacios
-  fromName: process.env.MAIL_FROM_NAME || 'IAESTE Madrid',
+  fromName: process.env.MAIL_FROM_NAME || 'IAESTE Málaga',
 
   // SMTP (por defecto Gmail; sobreescribible para pruebas locales con Mailpit)
   smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
