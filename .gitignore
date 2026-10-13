@@ -13,3 +13,4 @@ KEYS*
 *.backup.gz
 *.dump
 *.sql.gz
+.vercel

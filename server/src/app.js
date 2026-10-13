@@ -17,7 +17,7 @@ export function crearApp(sb) {
   app.use(cors({ origin: config.corsOrigins, methods: ['GET', 'POST'], allowedHeaders: ['Content-Type', 'Authorization'] }))
   app.use(express.json({ limit: '100kb' }))
 
-  app.get('/health', (_req, res) => res.json({ ok: true }))
+  app.get(['/health', '/api/health'], (_req, res) => res.json({ ok: true }))
 
   // Autenticación: el navegador manda el token de sesión de Supabase del usuario del CRM.
   // Devuelve el perfil, o lanza ErrorUsuario(401/403).
