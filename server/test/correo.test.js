@@ -2,6 +2,7 @@
 // Crean datos de prueba en la base local: haz `npm run db:reset` después.
 import test, { before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '../src/config.js'
 import { crearApp } from '../src/app.js'
@@ -237,4 +238,46 @@ test('RLS: el miembro solo lee los correos de sus empresas; los sin clasificar s
   assert.ok(w.error)
   const anon = createClient(URL_SB, ANON, { auth: { persistSession: false } })
   assert.equal((await anon.from('emails').select('id')).data?.length ?? 0, 0)
+})
+
+// ---------- Adjuntos ----------
+test('API: adjuntos (propios y de plantilla) llegan a Mailpit, se copian a la carpeta del correo y se validan las rutas', async () => {
+  const { token, cliente } = await login('marta@iaeste.test', 'Miembro1234')
+  const subir = async (carpeta, nombre, contenido) => {
+    const path = `${carpeta}/${randomUUID()}-${nombre}`
+    const { error } = await cliente.storage.from('adjuntos').upload(path, Buffer.from(contenido), { contentType: 'text/plain' })
+    assert.ifError(error)
+    return path
+  }
+  const propio = await subir(`correos/${empresaMarta}`, 'convenio.txt', 'texto del convenio')
+  const deplantilla = await subir(`plantillas/${randomUUID()}`, 'presentacion.txt', 'texto de la presentacion')
+  const asunto = `Con adjuntos ${Date.now()}`
+  const base = { empresa_id: empresaMarta, para: 'jmolina@redesdelsur.example', asunto, cuerpo: 'Te adjunto los archivos.' }
+
+  const r = await post('/api/emails/send', token, { ...base, adjuntos: [{ path: propio, nombre: 'Convenio IAESTE.txt' }, { path: deplantilla, nombre: 'presentacion.txt' }] })
+  assert.equal(r.status, 201, await r.clone().text())
+  const { id } = await r.json()
+
+  const { data } = await sb.from('emails').select('adjuntos').eq('id', id).single()
+  assert.equal(data.adjuntos.length, 2)
+  assert.deepEqual(data.adjuntos.map((a) => a.nombre), ['Convenio IAESTE.txt', 'presentacion.txt'])
+  assert.ok(data.adjuntos.every((a) => a.path.startsWith(`correos/${empresaMarta}/`)), 'el de plantilla se copió a la carpeta del correo')
+  assert.equal(data.adjuntos[0].tamano, 'texto del convenio'.length)
+
+  const lista = await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent('subject:"' + asunto + '"')}`)).json()
+  const msg = await (await fetch(`${MAILPIT}/api/v1/message/${lista.messages[0].ID}`)).json()
+  assert.deepEqual(msg.Attachments.map((a) => a.FileName).sort(), ['Convenio IAESTE.txt', 'presentacion.txt'])
+
+  // El miembro puede descargar los archivos de su correo (política de Storage)
+  const { data: blob, error } = await cliente.storage.from('adjuntos').download(data.adjuntos[0].path)
+  assert.ifError(error)
+  assert.equal(await blob.text(), 'texto del convenio')
+
+  // Rutas no permitidas: de otra empresa, con «..», de otro bucket o demasiadas
+  const malo = async (adjuntos) => (await post('/api/emails/send', token, { ...base, adjuntos })).status
+  assert.equal(await malo([{ path: `correos/${empresaPablo}/${randomUUID()}-x.txt`, nombre: 'x' }]), 400)
+  assert.equal(await malo([{ path: `correos/${empresaMarta}/../${randomUUID()}-x.txt`, nombre: 'x' }]), 400)
+  assert.equal(await malo([{ path: `otra/${randomUUID()}-x.txt`, nombre: 'x' }]), 400)
+  assert.equal(await malo(Array.from({ length: 11 }, () => ({ path: propio, nombre: 'x' }))), 400)
+  assert.equal(await malo([{ path: `correos/${empresaMarta}/${randomUUID()}-no-existe.txt`, nombre: 'x' }]), 400)
 })

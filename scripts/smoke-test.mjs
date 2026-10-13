@@ -65,6 +65,24 @@ rp = await marta.from('plantillas').delete().eq('id', mia.id).select()
 ok(!rp.error && rp.data.length === 1, 'miembro borra su plantilla')
 ok(((await anon.from('plantillas').select('id')).data || []).length === 0, 'anon no lee plantillas')
 
+console.log('Adjuntos (Storage)')
+const arch = (c, ruta) => c.storage.from('adjuntos').upload(ruta, Buffer.from('prueba'), { contentType: 'text/plain' })
+const rutaMarta = `correos/${deMarta.id}/${crypto.randomUUID()}-a.txt`
+const rutaPablo = `correos/${delPablo.id}/${crypto.randomUUID()}-a.txt`
+const rutaPlantilla = `plantillas/${crypto.randomUUID()}/${crypto.randomUUID()}-a.txt`
+ok(!(await arch(marta, rutaMarta)).error, 'miembro sube un archivo a una empresa suya')
+ok(!!(await arch(marta, rutaPablo)).error, 'miembro no puede subir a una empresa ajena')
+ok(!!(await arch(marta, `otra/${crypto.randomUUID()}-a.txt`)).error, 'miembro no puede subir fuera de correos/ y plantillas/')
+ok(!(await arch(marta, rutaPlantilla)).error, 'miembro sube un archivo de plantilla')
+ok(!(await ana.storage.from('adjuntos').download(rutaMarta)).error, 'admin descarga archivos de cualquier empresa')
+ok(!(await arch(ana, rutaPablo)).error, 'admin sube a cualquier empresa')
+ok(!!(await marta.storage.from('adjuntos').download(rutaPablo)).error, 'miembro no descarga archivos de empresas ajenas')
+ok(!(await marta.storage.from('adjuntos').download(rutaPlantilla)).error, 'miembro descarga archivos de plantilla')
+ok(!!(await anon.storage.from('adjuntos').download(rutaPlantilla)).error, 'anon no descarga adjuntos')
+const bor = await marta.storage.from('adjuntos').remove([rutaPlantilla, rutaPablo])
+ok(bor.data?.length === 1, 'miembro borra su archivo pero no el de otra persona')
+await ana.storage.from('adjuntos').remove([rutaMarta, rutaPablo])
+
 console.log('Escritura de miembros')
 let r = await marta.from('empresas').update({ nombre: 'Hack' }).eq('id', deMarta.id)
 ok(!!r.error, 'miembro no puede cambiar el nombre')

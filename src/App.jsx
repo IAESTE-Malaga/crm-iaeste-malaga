@@ -3,10 +3,11 @@ import { supabase } from './supabase'
 import EmailThread from './EmailThread'
 import Guia from './Guia'
 import { VARIABLES, aplicarVariables } from './plantillas'
+import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos } from './adjuntos'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users, FileText, BookOpen,
+  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users, FileText, BookOpen, Paperclip,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -1497,7 +1498,7 @@ function Plantillas({ users, me, isAdmin }) {
 
   const cargar = useCallback(async () => {
     const { data, error } = await supabase.from('plantillas')
-      .select('id, nombre, asunto, cuerpo, creado_por, actualizado').order('nombre')
+      .select('id, nombre, asunto, cuerpo, adjuntos, creado_por, actualizado').order('nombre')
     if (error) {
       setErr(['PGRST205', '42P01'].includes(error.code)
         ? 'Falta la tabla de plantillas en la base de datos: aplica las migraciones pendientes (npx supabase db push).'
@@ -1516,6 +1517,7 @@ function Plantillas({ users, me, isAdmin }) {
     if (!confirm(`¿Eliminar la plantilla «${p.nombre}»? No se puede deshacer.`)) return
     const { error, count } = await supabase.from('plantillas').delete({ count: 'exact' }).eq('id', p.id)
     if (error || !count) { setErr(error?.message || 'No se ha podido eliminar la plantilla.'); return }
+    await borrarArchivos((p.adjuntos || []).map((a) => a.path))
     await cargar()
   }
 
@@ -1550,6 +1552,11 @@ function Plantillas({ users, me, isAdmin }) {
               </div>
               {p.asunto && <p className="text-xs font-semibold text-slate-600 truncate">Asunto: {p.asunto}</p>}
               <p className="text-xs text-slate-500 whitespace-pre-line line-clamp-4 break-words">{p.cuerpo}</p>
+              {p.adjuntos?.length > 0 && (
+                <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-auto pt-1" title={p.adjuntos.map((a) => a.nombre).join(', ')}>
+                  <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />{p.adjuntos.length} archivo{p.adjuntos.length !== 1 ? 's' : ''} adjunto{p.adjuntos.length !== 1 ? 's' : ''}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -1567,7 +1574,13 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
   const [previa, setPrevia] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [err, setErr] = useState('')
+  const [id] = useState(() => plantilla?.id || crypto.randomUUID()) // el id se fija antes de guardar: los archivos cuelgan de él
+  const [adjuntos, setAdjuntos] = useState(plantilla?.adjuntos || [])
+  const [subiendo, setSubiendo] = useState(false)
+  const subidos = useRef([])   // archivos subidos en esta sesión: si se cancela, se borran
+  const quitados = useRef([])  // archivos de la plantilla guardada que se han quitado: se borran al guardar
   const area = useRef(null)
+  const inputArchivos = useRef(null)
   const ejemplo = { empresa: { nombre: 'Ejemplo S.L.', contacto: 'Ana' }, yo: me.nombre }
 
   // Inserta la variable donde esté el cursor del mensaje
@@ -1580,23 +1593,53 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(ini + v.length, ini + v.length) })
   }
 
+  const cerrar = () => { borrarArchivos(subidos.current); onClose() }
+
+  const adjuntar = async (e) => {
+    const files = [...e.target.files]
+    e.target.value = ''
+    if (!files.length) return
+    setErr('')
+    const error = validarArchivos(adjuntos, files)
+    if (error) { setErr(error); return }
+    setSubiendo(true)
+    try {
+      for (const f of files) {
+        const a = await subirArchivo(`plantillas/${id}`, f)
+        subidos.current.push(a.path)
+        setAdjuntos((l) => [...l, a])
+      }
+    } catch (ex) {
+      setErr(ex.message)
+    } finally {
+      setSubiendo(false)
+    }
+  }
+
+  const quitar = (a) => {
+    setAdjuntos((l) => l.filter((x) => x.path !== a.path))
+    if (subidos.current.includes(a.path)) { subidos.current = subidos.current.filter((x) => x !== a.path); borrarArchivos([a.path]) }
+    else quitados.current.push(a.path)
+  }
+
   const guardar = async () => {
     setErr('')
     if (!nombre.trim()) { setErr('Ponle un nombre a la plantilla.'); return }
     if (!cuerpo.trim()) { setErr('Escribe el mensaje.'); return }
     setGuardando(true)
-    const datos = { nombre: nombre.trim(), asunto: asunto.trim(), cuerpo }
+    const datos = { nombre: nombre.trim(), asunto: asunto.trim(), cuerpo, adjuntos }
     const { error } = plantilla
       ? await supabase.from('plantillas').update({ ...datos, actualizado: new Date().toISOString() }).eq('id', plantilla.id)
-      : await supabase.from('plantillas').insert({ ...datos, creado_por: me.id })
+      : await supabase.from('plantillas').insert({ ...datos, id, creado_por: me.id })
     setGuardando(false)
     if (error) { setErr(error.message); return }
+    await borrarArchivos(quitados.current)
     onSaved()
   }
 
   return (
-    <Modal onClose={onClose} ancho="max-w-2xl">
-      <ModalHead onClose={onClose}>{plantilla ? 'Editar plantilla' : 'Nueva plantilla'}</ModalHead>
+    <Modal onClose={cerrar} ancho="max-w-2xl">
+      <ModalHead onClose={cerrar}>{plantilla ? 'Editar plantilla' : 'Nueva plantilla'}</ModalHead>
       <div className="p-6 space-y-4">
         <div>
           <Label>Nombre</Label>
@@ -1627,12 +1670,34 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
               placeholder={'Buenos días {{contacto}},\n\nMi nombre es {{yo}} y …'}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 resize-y" />
           )}
-          <p className="text-[11px] text-slate-400 mt-1">Los correos se envían como texto plano. Si una variable no tiene valor (p. ej. la empresa no tiene contacto) se omite.</p>
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <Label>Archivos adjuntos</Label>
+              <input ref={inputArchivos} type="file" multiple onChange={adjuntar} className="hidden" />
+              <button type="button" onClick={() => inputArchivos.current?.click()} disabled={subiendo} className={`${miniBtn} -mt-1.5 disabled:opacity-60`}>
+                <Paperclip className="w-3.5 h-3.5" />{subiendo ? 'Subiendo…' : 'Adjuntar archivo'}
+              </button>
+            </div>
+            {adjuntos.length === 0 ? (
+              <p className="text-xs text-slate-400">Ninguno. Los archivos de la plantilla (presentación, convenio…) se añaden solos al correo cuando alguien la elige, y puede quitarlos antes de enviar.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {adjuntos.map((a) => (
+                  <span key={a.path} className="inline-flex items-center gap-1.5 max-w-full pl-2.5 pr-1 py-1 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700">
+                    <Paperclip className="w-3 h-3 text-slate-400 shrink-0" /><span className="truncate">{a.nombre}</span>
+                    <span className="text-slate-400 shrink-0">{formatoTamano(a.tamano)}</span>
+                    <button type="button" onClick={() => quitar(a)} title="Quitar" aria-label={`Quitar ${a.nombre}`} className="p-0.5 rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-3">Los correos se envían como texto plano. Si una variable no tiene valor (p. ej. la empresa no tiene contacto) se omite.</p>
         </div>
         {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
         <div className="flex justify-end gap-2">
-          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-          <Btn onClick={guardar} disabled={guardando}><Save className="w-4 h-4" />{guardando ? 'Guardando…' : 'Guardar'}</Btn>
+          <Btn variant="ghost" onClick={cerrar}>Cancelar</Btn>
+          <Btn onClick={guardar} disabled={guardando || subiendo}><Save className="w-4 h-4" />{guardando ? 'Guardando…' : 'Guardar'}</Btn>
         </div>
       </div>
     </Modal>

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText } from 'lucide-react'
+import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText, Paperclip, X } from 'lucide-react'
 import { supabase } from './supabase'
 import { aplicarVariables } from './plantillas'
+import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos, descargarArchivo } from './adjuntos'
 
 // URL del servicio de correo (server/). En desarrollo, el puerto por defecto; en producción hay que definirla.
 const API = (import.meta.env.VITE_EMAIL_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '')
@@ -38,13 +39,17 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
   const [aviso, setAviso] = useState('')
   const [sincronizando, setSincronizando] = useState(false)
   const [plantillas, setPlantillas] = useState([])
+  const [adjuntos, setAdjuntos] = useState([])   // [{ path, nombre, tamano, deplantilla? }] del correo que se está redactando
+  const [subiendo, setSubiendo] = useState(false)
+  const inputArchivos = useRef(null)
+  const subidosRef = useRef([])                  // rutas subidas por el usuario y aún sin enviar (se limpian al cerrar)
   const [tocado, setTocado] = useState(false)    // si el usuario ya ha escrito el asunto/destinatario, no se pisa
   const fin = useRef(null)
 
   const cargar = useCallback(async () => {
     const { data, error } = await supabase
       .from('emails')
-      .select('id, direccion, remitente, destinatario, asunto, cuerpo_texto, enviado_en, enviado_por, contacto_id')
+      .select('id, direccion, remitente, destinatario, asunto, cuerpo_texto, enviado_en, enviado_por, contacto_id, adjuntos')
       .eq('empresa_id', empresa.id)
       .order('enviado_en', { ascending: true })
       .limit(300)
@@ -62,7 +67,7 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
 
   // Plantillas compartidas (sección «Plantillas»). Si no cargan, el selector simplemente queda vacío.
   useEffect(() => {
-    supabase.from('plantillas').select('id, nombre, asunto, cuerpo').order('nombre')
+    supabase.from('plantillas').select('id, nombre, asunto, cuerpo, adjuntos').order('nombre')
       .then(({ data }) => setPlantillas(data || []))
   }, [])
 
@@ -87,6 +92,9 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [correos, tocado])
 
+  // Si se cierra la ficha con archivos subidos y sin enviar, se borran de Storage
+  useEffect(() => () => { borrarArchivos(subidosRef.current) }, [])
+
   // Al abrir o llegar mensajes nuevos, bajar al último
   useEffect(() => { fin.current?.scrollIntoView({ block: 'nearest' }) }, [correos?.length])
 
@@ -100,8 +108,46 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
     const asuntoNuevo = aplicarVariables(p.asunto, datos).trim()
     if (asuntoNuevo) setAsunto(asuntoNuevo)
     setCuerpo(aplicarVariables(p.cuerpo, datos))
+    // Los archivos de la plantilla anterior se sustituyen por los de esta; los que adjuntó el usuario se conservan
+    const propios = adjuntos.filter((a) => !a.deplantilla)
+    const deLaPlantilla = (p.adjuntos || []).map((a) => ({ ...a, deplantilla: true }))
+    const error = validarArchivos(propios, deLaPlantilla.map((a) => ({ size: a.tamano, name: a.nombre })))
+    setAdjuntos(error ? propios : [...propios, ...deLaPlantilla])
+    if (error) setErr(`No se han añadido los archivos de la plantilla. ${error}`)
     setTocado(true)
   }
+
+  // Adjuntar archivos del equipo: se suben a Storage al elegirlos y solo viajan las rutas al enviar
+  const adjuntar = async (e) => {
+    const files = [...e.target.files]
+    e.target.value = ''
+    if (!files.length) return
+    setErr('')
+    const error = validarArchivos(adjuntos, files)
+    if (error) { setErr(error); return }
+    setSubiendo(true)
+    try {
+      for (const f of files) {
+        const a = await subirArchivo(`correos/${empresa.id}`, f)
+        subidosRef.current.push(a.path)
+        setAdjuntos((l) => [...l, a])
+      }
+    } catch (ex) {
+      setErr(ex.message)
+    } finally {
+      setSubiendo(false)
+    }
+  }
+
+  const quitarAdjunto = (a) => {
+    setAdjuntos((l) => l.filter((x) => x.path !== a.path))
+    if (subidosRef.current.includes(a.path)) {
+      subidosRef.current = subidosRef.current.filter((x) => x !== a.path)
+      borrarArchivos([a.path])
+    }
+  }
+
+  const bajar = (a) => descargarArchivo(a).catch((ex) => setErr(ex.message))
 
   const enviar = async () => {
     setErr(''); setAviso('')
@@ -113,11 +159,11 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
       const r = await fetch(`${API}/api/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ empresa_id: empresa.id, para, asunto: asunto.trim(), cuerpo, responder_a: ultimo?.id }),
+        body: JSON.stringify({ empresa_id: empresa.id, para, asunto: asunto.trim(), cuerpo, responder_a: ultimo?.id, adjuntos: adjuntos.map(({ path, nombre }) => ({ path, nombre })) }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || `Error ${r.status}`)
-      setCuerpo(''); setTocado(false)
+      setCuerpo(''); setTocado(false); setAdjuntos([]); subidosRef.current = []
       setAviso(j.estado ? 'Enviado ✓ · empresa marcada como «Mail enviado»' : 'Enviado ✓')
       if (j.estado) onEnviado?.(j.estado)
       await cargar()
@@ -157,6 +203,17 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
                   </div>
                   <p className="font-semibold text-slate-800 mb-0.5 break-words">{c.asunto}</p>
                   <p className="text-slate-700 whitespace-pre-wrap break-words">{c.cuerpo_texto || '(sin texto)'}</p>
+                  {c.adjuntos?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {c.adjuntos.map((a) => (
+                        <button key={a.path} onClick={() => bajar(a)} title="Descargar"
+                          className="inline-flex items-center gap-1.5 max-w-full px-2 py-1 rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50">
+                          <Paperclip className="w-3 h-3 text-slate-400 shrink-0" /><span className="truncate">{a.nombre}</span>
+                          <span className="text-slate-400 shrink-0">{formatoTamano(a.tamano)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </li>
             )
@@ -194,9 +251,27 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
         <textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={8} maxLength={20000} placeholder="Escribe tu mensaje…"
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }}
           className="block w-full min-h-[12rem] px-4 py-3 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none resize-y" />
+        {adjuntos.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-t border-slate-100">
+            {adjuntos.map((a) => (
+              <span key={a.path} className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700">
+                <Paperclip className="w-3 h-3 text-slate-400 shrink-0" /><span className="truncate">{a.nombre}</span>
+                <span className="text-slate-400 shrink-0">{formatoTamano(a.tamano)}</span>
+                <button onClick={() => quitarAdjunto(a)} title="Quitar" aria-label={`Quitar ${a.nombre}`} className="p-0.5 rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600"><X className="w-3 h-3" /></button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-slate-100 bg-slate-50/70">
-          <p className="text-[11px] text-slate-400">Desde el buzón compartido de IAESTE · Ctrl+Enter para enviar{cuerpo ? ` · ${cuerpo.length.toLocaleString('es-ES')}/20.000` : ''}</p>
-          <button onClick={enviar} disabled={enviando || !para || !cuerpo.trim()}
+          <div className="flex items-center gap-3 min-w-0">
+            <input ref={inputArchivos} type="file" multiple onChange={adjuntar} className="hidden" />
+            <button onClick={() => inputArchivos.current?.click()} disabled={subiendo || enviando}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition">
+              <Paperclip className={`w-3.5 h-3.5 ${subiendo ? 'animate-pulse' : ''}`} />{subiendo ? 'Subiendo…' : 'Adjuntar'}
+            </button>
+          <p className="hidden sm:block text-[11px] text-slate-400 truncate">Desde el buzón compartido de IAESTE · Ctrl+Enter para enviar{cuerpo ? ` · ${cuerpo.length.toLocaleString('es-ES')}/20.000` : ''}</p>
+          </div>
+          <button onClick={enviar} disabled={enviando || subiendo || !para || !cuerpo.trim()}
             className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-brand-900 hover:bg-brand-700 text-white text-sm font-semibold disabled:opacity-50 transition">
             <Send className="w-4 h-4" />{enviando ? 'Enviando…' : 'Enviar'}
           </button>

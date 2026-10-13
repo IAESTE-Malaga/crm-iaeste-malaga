@@ -24,6 +24,54 @@ const smtp = () => (transporte ||= nodemailer.createTransport({
 const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const aHtml = (t) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">${esc(t).replace(/\r?\n/g, '<br>')}</div>`
 
+// Archivos adjuntos: viven en el bucket «adjuntos» y el navegador solo manda sus rutas (ver supabase/migrations/*_adjuntos.sql).
+// Solo se admiten las del propio correo de esa empresa (correos/<empresa>/…) o las de una plantilla (plantillas/<id>/…).
+const BUCKET = 'adjuntos'
+const MAX_ADJUNTOS = 10
+const MAX_BYTES = 18 * 1024 * 1024 // Gmail: 25 MB por correo, y en base64 el archivo pesa ~⅓ más
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+const nombreLimpio = (n) => String(n || '').replace(/[\u0000-\u001f\\/]+/g, '_').trim().slice(0, 150)
+
+export function validarAdjuntos(lista, empresaId) {
+  if (lista == null) return []
+  if (!Array.isArray(lista) || lista.length > MAX_ADJUNTOS) throw new ErrorUsuario(`Máximo ${MAX_ADJUNTOS} archivos adjuntos.`)
+  if (!new RegExp(`^${UUID}$`, 'i').test(String(empresaId))) throw new ErrorUsuario('La empresa no es válida.')
+  const permitida = new RegExp(`^(correos/${empresaId}|plantillas/${UUID})/${UUID}-[\\w.-]+$`, 'i')
+  return lista.map((a) => {
+    const path = String(a?.path || '')
+    if (!permitida.test(path)) throw new ErrorUsuario('Alguno de los archivos adjuntos no es válido. Quítalo y vuelve a adjuntarlo.')
+    return { path, nombre: nombreLimpio(a.nombre) || path.split('/').pop().slice(37) || 'archivo' }
+  })
+}
+
+async function descargarAdjuntos(sb, lista) {
+  let total = 0
+  const archivos = []
+  for (const a of lista) {
+    const { data, error } = await sb.storage.from(BUCKET).download(a.path)
+    if (error || !data) throw new ErrorUsuario(`No se encuentra el archivo «${a.nombre}». Quítalo y vuelve a adjuntarlo.`)
+    const content = Buffer.from(await data.arrayBuffer())
+    total += content.length
+    if (total > MAX_BYTES) throw new ErrorUsuario('Los archivos adjuntos pesan demasiado (máximo 18 MB en total).')
+    archivos.push({ filename: a.nombre, content, contentType: data.type || undefined, ruta: a.path })
+  }
+  return archivos
+}
+
+// Los archivos de plantilla se copian a la carpeta del correo para que el correo enviado conserve los suyos aunque la plantilla cambie
+async function guardarAdjuntos(sb, empresaId, archivos) {
+  return Promise.all(archivos.map(async (a) => {
+    let path = a.ruta
+    if (path.startsWith('plantillas/')) {
+      const copia = `correos/${empresaId}/${randomUUID()}-${path.split('/').pop().slice(37)}`
+      const { error } = await sb.storage.from(BUCKET).copy(path, copia)
+      if (error) console.error('[adjuntos] no se pudo copiar a la carpeta del correo:', error.message)
+      else path = copia
+    }
+    return { path, nombre: a.filename, tamano: a.content.length }
+  }))
+}
+
 export function validarEnvio({ para, asunto, cuerpo }) {
   const to = String(para || '').trim().toLowerCase()
   if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(to) || to.length > 254) throw new ErrorUsuario('El destinatario no es un email válido.')
@@ -53,7 +101,7 @@ async function marcarMailEnviado(sb, usuario, empresa) {
 //  - Solo se puede escribir a direcciones que ya pertenecen a esa empresa (su ficha o contactos suyos):
 //    así el CRM no sirve de relé de spam con la cuenta compartida.
 //  - Los miembros solo pueden escribir desde empresas que llevan; los admins, desde cualquiera.
-export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerpo, responderA }) {
+export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerpo, responderA, adjuntos }) {
   const { to, subject, text } = validarEnvio({ para, asunto, cuerpo })
 
   const { data: empresa, error: eEmp } = await sb.from('empresas').select('id, nombre, email, responsable, estado').eq('id', empresaId).maybeSingle()
@@ -69,6 +117,8 @@ export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerp
   if (!permitidos.has(to)) {
     throw new ErrorUsuario('Ese destinatario no pertenece a la empresa. Añade su email en la ficha de la empresa primero.', 403)
   }
+
+  const archivos = await descargarAdjuntos(sb, validarAdjuntos(adjuntos, empresa.id))
 
   // Hilo: si responde a un correo concreto, se enlaza con In-Reply-To / References
   let inReplyTo, referencias
@@ -89,6 +139,7 @@ export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerp
       subject,
       text,
       html: aHtml(text),
+      attachments: archivos.map(({ filename, content, contentType }) => ({ filename, content, contentType })),
       messageId,
       date: fecha,
       inReplyTo,
@@ -121,6 +172,7 @@ export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerp
       asunto: subject,
       cuerpo_texto: text,
       cuerpo_html: aHtml(text),
+      adjuntos: await guardarAdjuntos(sb, empresaId, archivos),
       enviado_en: fecha.toISOString(),
       enviado_por: usuario.id,
     }).select('id').single()

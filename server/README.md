@@ -27,7 +27,7 @@ Límites de Gmail a tener en cuenta: ~500 correos al día en cuentas gratuitas (
 
 ## 2. Base de datos
 
-Las tablas están en `supabase/migrations/20261008000000_correo.sql` (`npx supabase db push` en producción).
+Las tablas están en `supabase/migrations/20261008000000_correo.sql` (`npx supabase db push` en producción). Los adjuntos (`20261014000000_adjuntos.sql`) usan el bucket privado `adjuntos` de Supabase Storage y una columna `adjuntos` (jsonb) en `emails` y `plantillas`.
 
 | Tabla | Para qué |
 |---|---|
@@ -63,6 +63,8 @@ npm --prefix server run sync    # revisa los últimos días de la bandeja y guar
 ## 5. Cómo funciona
 
 **Envío** (`POST /api/emails/send`, cabecera `Authorization: Bearer <token de sesión>`): comprueba la sesión, que el usuario lleve esa empresa (o sea admin) y que el destinatario **pertenezca a la empresa** (email de la ficha o contacto suyo) — así la cuenta compartida no sirve de relé de spam. Envía por SMTP con `Message-ID` propio y cabeceras `In-Reply-To`/`References` si responde a un correo, y lo guarda ligado al contacto. El cuerpo se envía como texto + HTML escapado.
+
+**Adjuntos al enviar:** el navegador sube los archivos directamente a Storage (la función serverless de Vercel solo admite ~4,5 MB por petición) y a `/api/emails/send` solo le manda sus rutas (`adjuntos: [{ path, nombre }]`). El servicio solo acepta rutas de ese mismo correo (`correos/<empresa>/…`) o de una plantilla (`plantillas/<id>/…`), con un máximo de 10 archivos y 18 MB en total; los descarga con la service_role y los adjunta. Los de plantilla se copian a `correos/<empresa>/` para que el correo enviado conserve sus archivos aunque la plantilla cambie. Los permisos de Storage (RLS) siguen las reglas del CRM: un admin o el responsable de la empresa para `correos/`, todo el equipo para `plantillas/`.
 
 **Recepción** (a demanda con `POST /api/sync`; en un servidor propio, también cada `SYNC_INTERVAL_MINUTES`, por defecto 3): conecta por IMAP, revisa los correos de INBOX de los últimos `SYNC_LOOKBACK_DAYS` días (por defecto 7), **estén leídos o no**, y se descarga solo los que no conoce (compara por `Message-ID`). Por cada uno: interpreta el MIME (`mailparser`: multipart, quoted-printable/base64, charsets, cabeceras codificadas; los adjuntos se ignoran), busca la empresa y guarda. No cambia ningún indicador en Gmail (leído, etiquetas…).
 

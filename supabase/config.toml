@@ -115,8 +115,8 @@ smtp_port = 54325
 # sender_name = "Admin"
 
 [storage]
-# La app no usa storage
-enabled = false
+# Adjuntos de correos y plantillas (bucket «adjuntos», ver migración *_adjuntos.sql)
+enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 

@@ -125,7 +125,8 @@ export default function Guia({ isAdmin }) {
           <li><B>Estado automático:</B> el primer correo que envías a una empresa «Sin contactar» o «No lo cogen» la pasa a <B>Mail enviado</B>.</li>
           <li><B>Respuestas:</B> los correos nuevos se buscan al abrir la ficha y con el botón de actualizar (flechas circulares) de la sección Correos. No llegan en segundo plano, así que pulsa actualizar si esperas una respuesta.</li>
           <li><B>Responder:</B> por defecto escribes al último remitente con «Re: asunto», y el mensaje se enlaza con el hilo.</li>
-          <li><B>Texto plano:</B> los correos se envían como texto, sin formato ni adjuntos. Si hay que adjuntar la presentación o el convenio, indícalo en el mensaje y envíalo aparte.</li>
+          <li><B>Archivos adjuntos:</B> pulsa <B>Adjuntar</B> junto al botón Enviar y elige uno o varios archivos (hasta 10, 15 MB cada uno y 18 MB en total). Se suben al momento y puedes quitarlos con la X antes de enviar. Los correos enviados muestran sus archivos en el hilo: haz clic en uno para descargarlo.</li>
+          <li><B>Texto plano:</B> el mensaje se envía como texto, sin formato. Si necesitas enviar la presentación o el convenio, adjúntalos.</li>
         </Lista>
       </Seccion>
 
@@ -136,6 +137,7 @@ export default function Guia({ isAdmin }) {
           <li><B>Crearlas:</B> en el menú <B>Plantillas</B> → «Nueva plantilla». Ponle nombre, asunto (opcional) y mensaje. Puedes ver cómo quedará con «Vista previa».</li>
           <li><B>Variables:</B> escribe <code className="text-xs bg-slate-100 rounded px-1 py-0.5">{'{{empresa}}'}</code>, <code className="text-xs bg-slate-100 rounded px-1 py-0.5">{'{{contacto}}'}</code> o <code className="text-xs bg-slate-100 rounded px-1 py-0.5">{'{{yo}}'}</code> (tu nombre)
             y se sustituyen al elegir la plantilla. Si la empresa no tiene persona de contacto, simplemente se omite.</li>
+          <li><B>Archivos en plantillas:</B> al crear o editar una plantilla puedes adjuntarle archivos (la presentación, el modelo de convenio…). Cuando alguien elige la plantilla, esos archivos se añaden solos al correo y se pueden quitar antes de enviar.</li>
           <li><B>Permisos:</B> todos ven y usan todas las plantillas. Solo quien creó una plantilla (o un admin) puede editarla o borrarla.</li>
         </Lista>
       </Seccion>
