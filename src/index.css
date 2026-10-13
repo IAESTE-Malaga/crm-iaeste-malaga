@@ -56,6 +56,18 @@
   .scroll-thin { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* Mensajes de correo en HTML (editor y vista previa): se deshace el reset de Tailwind para que se vean
+     como en un cliente de correo, con la misma tipografía por defecto que el envoltorio del servidor. */
+  .correo-html { font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: normal; color: #222; overflow-wrap: break-word; }
+  .correo-html :where(p, ul, ol, h1, h2, h3, h4, h5, h6, pre, hr) { margin: revert; }
+  .correo-html :where(ul, ol) { padding: revert; list-style: revert; }
+  .correo-html :where(h1, h2, h3, h4, h5, h6) { font-size: revert; font-weight: revert; }
+  .correo-html :where(a) { color: #1155cc; text-decoration: underline; }
+  .correo-html :where(img) { display: inline; max-width: 100%; }
+  .correo-html :where(table) { border-collapse: separate; }
+  .correo-html :where(blockquote) { margin: 0 0 0 0.8ex; padding-left: 1ex; border-left: 1px solid #ccc; }
+  .correo-html :where(hr) { border-top: 1px solid #ccc; }
 }
 
 @media (prefers-reduced-motion: reduce) {

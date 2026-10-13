@@ -172,6 +172,38 @@ test('API: un miembro envía desde su empresa, se guarda y llega a Mailpit con c
   assert.equal(d2.in_reply_to, messageId)
 })
 
+test('API: mensaje en HTML (firma pegada de Gmail): se conserva el formato y se quita lo peligroso', async () => {
+  const { token } = await login('marta@iaeste.test', 'Miembro1234')
+  const asunto = `Prueba HTML ${Date.now()}`
+  const firma = '<table border="0" cellspacing="3" cellpadding="0" width="652" style="width:489.05pt"><tbody><tr><td style="width:245.8pt;padding:0.75pt">'
+    + '<p class="MsoNormal" style="margin-bottom:0.0001pt;line-height:normal"><b style="font-family:arial,helvetica,sans-serif;color:rgb(11,61,89);font-size:9pt">Marta Sanz</b></p>'
+    + '<p><font face="Verdana, sans-serif" color="#134f5c">IAESTE Málaga</font> · <a href="https://www.iaeste.es">www.iaeste.es</a></p>'
+    + '<p><img src="https://docs.google.com/uc?export=download&amp;id=abc" width="200" height="57"></p></td></tr></tbody></table>'
+  const html = `<div>Hola Jorge,<br><br>Te escribo por las <b>prácticas</b>.</div>${firma}`
+    + '<script>alert(1)</script><a href="javascript:alert(1)" onclick="x()">malo</a><img src="cid:logo"><img src="data:image/png;base64,AAAA"><p style="position:fixed;background:url(https://x.example/y.png);color:red">fin</p>'
+  const r = await post('/api/emails/send', token, { empresa_id: empresaMarta, para: 'jmolina@redesdelsur.example', asunto, html })
+  assert.equal(r.status, 201, await r.clone().text())
+  const { data } = await sb.from('emails').select('cuerpo_html, cuerpo_texto').eq('id', (await r.json()).id).single()
+
+  for (const queda of ['<b>prácticas</b>', 'cellspacing="3"', 'color:rgb(11,61,89)', '<font face="Verdana, sans-serif" color="#134f5c">', 'href="https://www.iaeste.es"', 'src="https://docs.google.com/uc?export=download&amp;id=abc"', 'style="color:red"']) {
+    assert.ok(data.cuerpo_html.includes(queda), `conserva ${queda}`)
+  }
+  for (const fuera of ['<script', 'javascript:', 'onclick', 'cid:', 'data:image', 'position', 'url(', 'class=']) {
+    assert.ok(!data.cuerpo_html.includes(fuera), `quita ${fuera}`)
+  }
+  assert.match(data.cuerpo_texto, /^Hola Jorge,\n\nTe escribo por las prácticas\./)
+  assert.match(data.cuerpo_texto, /Marta Sanz/)
+
+  const lista = await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent('subject:"' + asunto + '"')}`)).json()
+  const msg = await (await fetch(`${MAILPIT}/api/v1/message/${lista.messages[0].ID}`)).json()
+  assert.match(msg.HTML, /<b>prácticas<\/b>/)
+  assert.match(msg.Text, /Marta Sanz/) // también lleva la versión en texto
+
+  // Vacío (solo etiquetas) o enorme: 400
+  assert.equal((await post('/api/emails/send', token, { empresa_id: empresaMarta, para: 'jmolina@redesdelsur.example', asunto, html: '<p><br></p><script>x</script>' })).status, 400)
+  assert.equal((await post('/api/emails/send', token, { empresa_id: empresaMarta, para: 'jmolina@redesdelsur.example', asunto, html: '<b>x</b>'.repeat(15_000) })).status, 400)
+})
+
 test('API: el primer correo pasa la empresa a «mail enviado» (y deja rastro en el historial); en otros estados no la toca', async () => {
   const { token } = await login('marta@iaeste.test', 'Miembro1234')
   const envio = () => post('/api/emails/send', token, { empresa_id: empresaMarta, para: 'jmolina@redesdelsur.example', asunto: `Estado ${Date.now()}`, cuerpo: 'hola' })

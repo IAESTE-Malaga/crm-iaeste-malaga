@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { supabase } from './supabase'
 import EmailThread from './EmailThread'
 import Guia from './Guia'
+import EditorCorreo from './EditorCorreo'
 import { VARIABLES, aplicarVariables } from './plantillas'
+import { limpiarHtml, htmlATexto, htmlVacio } from './html'
 import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos } from './adjuntos'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
@@ -1551,7 +1553,7 @@ function Plantillas({ users, me, isAdmin }) {
                 )}
               </div>
               {p.asunto && <p className="text-xs font-semibold text-slate-600 truncate">Asunto: {p.asunto}</p>}
-              <p className="text-xs text-slate-500 whitespace-pre-line line-clamp-4 break-words">{p.cuerpo}</p>
+              <p className="text-xs text-slate-500 whitespace-pre-line line-clamp-4 break-words">{htmlATexto(p.cuerpo)}</p>
               {p.adjuntos?.length > 0 && (
                 <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-auto pt-1" title={p.adjuntos.map((a) => a.nombre).join(', ')}>
                   <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />{p.adjuntos.length} archivo{p.adjuntos.length !== 1 ? 's' : ''} adjunto{p.adjuntos.length !== 1 ? 's' : ''}
@@ -1579,19 +1581,10 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
   const [subiendo, setSubiendo] = useState(false)
   const subidos = useRef([])   // archivos subidos en esta sesión: si se cancela, se borran
   const quitados = useRef([])  // archivos de la plantilla guardada que se han quitado: se borran al guardar
-  const area = useRef(null)
+  const editor = useRef(null)
   const inputArchivos = useRef(null)
+  const [aviso, setAviso] = useState('')
   const ejemplo = { empresa: { nombre: 'Ejemplo S.L.', contacto: 'Ana' }, yo: me.nombre }
-
-  // Inserta la variable donde esté el cursor del mensaje
-  const insertar = (id) => {
-    const el = area.current
-    const ini = el?.selectionStart ?? cuerpo.length
-    const fin = el?.selectionEnd ?? cuerpo.length
-    const v = `{{${id}}}`
-    setCuerpo(cuerpo.slice(0, ini) + v + cuerpo.slice(fin))
-    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(ini + v.length, ini + v.length) })
-  }
 
   const cerrar = () => { borrarArchivos(subidos.current); onClose() }
 
@@ -1625,9 +1618,11 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
   const guardar = async () => {
     setErr('')
     if (!nombre.trim()) { setErr('Ponle un nombre a la plantilla.'); return }
-    if (!cuerpo.trim()) { setErr('Escribe el mensaje.'); return }
+    const html = limpiarHtml(cuerpo)
+    if (htmlVacio(html)) { setErr('Escribe el mensaje.'); return }
+    if (html.length > 100_000) { setErr('El mensaje es demasiado largo (máximo 100.000 caracteres de HTML).'); return }
     setGuardando(true)
-    const datos = { nombre: nombre.trim(), asunto: asunto.trim(), cuerpo, adjuntos }
+    const datos = { nombre: nombre.trim(), asunto: asunto.trim(), cuerpo: html, adjuntos }
     const { error } = plantilla
       ? await supabase.from('plantillas').update({ ...datos, actualizado: new Date().toISOString() }).eq('id', plantilla.id)
       : await supabase.from('plantillas').insert({ ...datos, id, creado_por: me.id })
@@ -1652,24 +1647,23 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
         <div>
           <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
             <Label>Mensaje</Label>
-            <div className="flex items-center gap-1.5 flex-wrap -mt-1.5">
-              {!previa && VARIABLES.map((v) => (
-                <button key={v.id} type="button" onClick={() => insertar(v.id)} title={`${v.desc}: se inserta donde esté el cursor`} className={miniBtn}>{`{{${v.id}}}`}</button>
-              ))}
-              <button type="button" onClick={() => setPrevia((x) => !x)} className={chipPeriodo(previa)}>Vista previa</button>
-            </div>
+            <button type="button" onClick={() => setPrevia((x) => !x)} className={`${chipPeriodo(previa)} -mt-1.5`}>Vista previa</button>
           </div>
           {previa ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">
-              <p className="text-xs text-slate-400 mb-2">Con datos de ejemplo (empresa «Ejemplo S.L.», contacto «Ana»).</p>
-              {aplicarVariables(asunto, ejemplo).trim() && <p className="font-semibold mb-2">Asunto: {aplicarVariables(asunto, ejemplo).trim()}</p>}
-              {aplicarVariables(cuerpo, ejemplo)}
+            <div className="rounded-xl border border-slate-200 bg-white max-h-[60vh] overflow-y-auto">
+              <p className="px-4 py-2 text-xs text-slate-400 border-b border-slate-100 bg-slate-50/70">Con datos de ejemplo (empresa «Ejemplo S.L.», contacto «Ana»).</p>
+              {aplicarVariables(asunto, ejemplo).trim() && <p className="px-4 pt-3 text-sm font-semibold text-slate-800">Asunto: {aplicarVariables(asunto, ejemplo).trim()}</p>}
+              <div className="correo-html px-4 py-3" dangerouslySetInnerHTML={{ __html: limpiarHtml(aplicarVariables(cuerpo, ejemplo, { html: true })) }} />
             </div>
           ) : (
-            <textarea ref={area} value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={14} maxLength={20000}
-              placeholder={'Buenos días {{contacto}},\n\nMi nombre es {{yo}} y …'}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500 resize-y" />
+            <EditorCorreo ref={editor} valor={cuerpo} onChange={setCuerpo} onAviso={setAviso} avisarImagenes alto="min-h-[18rem]"
+              placeholder={'Buenos días {{contacto}},\n\nMi nombre es {{yo}} y …\n\nPuedes pegar tu firma de Gmail tal cual, o su código con el botón </>.'}
+              extra={VARIABLES.map((v) => (
+                <button key={v.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => editor.current?.insertar(`{{${v.id}}}`)}
+                  title={`${v.desc}: se inserta donde esté el cursor`} className="px-2 py-1 rounded-md border border-slate-200 bg-white text-[11px] font-medium text-slate-600 hover:bg-slate-50">{`{{${v.id}}}`}</button>
+              ))} />
           )}
+          {aviso && <p className="mt-2 text-xs text-amber-700 flex items-start gap-1"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />{aviso}</p>}
           <div className="mt-3">
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <Label>Archivos adjuntos</Label>
@@ -1692,7 +1686,7 @@ function PlantillaModal({ plantilla, me, onClose, onSaved }) {
               </div>
             )}
           </div>
-          <p className="text-[11px] text-slate-400 mt-3">Los correos se envían como texto plano. Si una variable no tiene valor (p. ej. la empresa no tiene contacto) se omite.</p>
+          <p className="text-[11px] text-slate-400 mt-3">El formato se conserva al enviar; las imágenes tienen que tener dirección web (como las de las firmas de Gmail). Si una variable no tiene valor (p. ej. la empresa no tiene contacto) se omite.</p>
         </div>
         {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
         <div className="flex justify-end gap-2">

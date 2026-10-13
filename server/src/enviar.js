@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import { randomUUID } from 'node:crypto'
 import { config } from './config.js'
 import { direccionesDe, asegurarContacto } from './ingest.js'
+import { limpiarHtml, htmlATexto, textoAHtml, envolver, MAX_HTML } from './html.js'
 
 export class ErrorUsuario extends Error {
   constructor(mensaje, status = 400) { super(mensaje); this.status = status }
@@ -20,9 +21,6 @@ const smtp = () => (transporte ||= nodemailer.createTransport({
   greetingTimeout: 15_000,
   socketTimeout: 30_000,
 }))
-
-const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-const aHtml = (t) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">${esc(t).replace(/\r?\n/g, '<br>')}</div>`
 
 // Archivos adjuntos: viven en el bucket «adjuntos» y el navegador solo manda sus rutas (ver supabase/migrations/*_adjuntos.sql).
 // Solo se admiten las del propio correo de esa empresa (correos/<empresa>/…) o las de una plantilla (plantillas/<id>/…).
@@ -72,16 +70,25 @@ async function guardarAdjuntos(sb, empresaId, archivos) {
   }))
 }
 
-export function validarEnvio({ para, asunto, cuerpo }) {
+// El mensaje llega como HTML del editor (`html`, se sanea aquí) o como texto plano (`cuerpo`)
+export function validarEnvio({ para, asunto, cuerpo, html }) {
   const to = String(para || '').trim().toLowerCase()
   if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(to) || to.length > 254) throw new ErrorUsuario('El destinatario no es un email válido.')
   const subject = String(asunto || '').trim()
   if (!subject) throw new ErrorUsuario('Escribe un asunto.')
   if (subject.length > 200 || /[\r\n]/.test(subject)) throw new ErrorUsuario('El asunto es demasiado largo o contiene saltos de línea.')
+  if (html != null) {
+    if (String(html).length > MAX_HTML * 2) throw new ErrorUsuario('El mensaje es demasiado largo.')
+    const limpio = limpiarHtml(html)
+    if (limpio.length > MAX_HTML) throw new ErrorUsuario('El mensaje es demasiado largo (máximo 100.000 caracteres de HTML).')
+    const text = htmlATexto(limpio)
+    if (!text && !/<img\b/i.test(limpio)) throw new ErrorUsuario('Escribe el mensaje.')
+    return { to, subject, text, html: envolver(limpio) }
+  }
   const text = String(cuerpo || '').replace(/\r\n/g, '\n').trim()
   if (!text) throw new ErrorUsuario('Escribe el mensaje.')
   if (text.length > 20_000) throw new ErrorUsuario('El mensaje es demasiado largo (máximo 20.000 caracteres).')
-  return { to, subject, text }
+  return { to, subject, text, html: envolver(textoAHtml(text)) }
 }
 
 // Primer contacto por correo: una empresa «sin contactar» o «no contesta» pasa a «mail enviado»
@@ -101,8 +108,8 @@ async function marcarMailEnviado(sb, usuario, empresa) {
 //  - Solo se puede escribir a direcciones que ya pertenecen a esa empresa (su ficha o contactos suyos):
 //    así el CRM no sirve de relé de spam con la cuenta compartida.
 //  - Los miembros solo pueden escribir desde empresas que llevan; los admins, desde cualquiera.
-export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerpo, responderA, adjuntos }) {
-  const { to, subject, text } = validarEnvio({ para, asunto, cuerpo })
+export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerpo, html: cuerpoHtml, responderA, adjuntos }) {
+  const { to, subject, text, html } = validarEnvio({ para, asunto, cuerpo, html: cuerpoHtml })
 
   const { data: empresa, error: eEmp } = await sb.from('empresas').select('id, nombre, email, responsable, estado').eq('id', empresaId).maybeSingle()
   if (eEmp) throw eEmp
@@ -138,7 +145,7 @@ export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerp
       to,
       subject,
       text,
-      html: aHtml(text),
+      html,
       attachments: archivos.map(({ filename, content, contentType }) => ({ filename, content, contentType })),
       messageId,
       date: fecha,
@@ -171,7 +178,7 @@ export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerp
       destinatario: to,
       asunto: subject,
       cuerpo_texto: text,
-      cuerpo_html: aHtml(text),
+      cuerpo_html: html,
       adjuntos: await guardarAdjuntos(sb, empresaId, archivos),
       enviado_en: fecha.toISOString(),
       enviado_por: usuario.id,

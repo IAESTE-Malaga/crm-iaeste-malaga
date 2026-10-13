@@ -15,7 +15,7 @@ export function crearApp(sb) {
   app.disable('x-powered-by')
   app.set('trust proxy', 1) // detrás del proxy de Railway / Render / Fly
   app.use(cors({ origin: config.corsOrigins, methods: ['GET', 'POST'], allowedHeaders: ['Content-Type', 'Authorization'] }))
-  app.use(express.json({ limit: '100kb' }))
+  app.use(express.json({ limit: '300kb' })) // un correo con firma en HTML puede pasar de 100 KB
 
   app.get(['/health', '/api/health'], (_req, res) => res.json({ ok: true }))
 
@@ -51,9 +51,9 @@ export function crearApp(sb) {
 
   app.post('/api/emails/send', autenticar, limite, async (req, res, next) => {
     try {
-      const { empresa_id, para, asunto, cuerpo, responder_a, adjuntos } = req.body || {}
+      const { empresa_id, para, asunto, cuerpo, html, responder_a, adjuntos } = req.body || {}
       if (!empresa_id) throw new ErrorUsuario('Falta la empresa.')
-      const r = await enviarCorreo(sb, req.usuario, { empresaId: empresa_id, para, asunto, cuerpo, responderA: responder_a, adjuntos })
+      const r = await enviarCorreo(sb, req.usuario, { empresaId: empresa_id, para, asunto, cuerpo, html, responderA: responder_a, adjuntos })
       res.status(201).json(r)
     } catch (e) {
       next(e)

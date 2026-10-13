@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText, Paperclip, X } from 'lucide-react'
 import { supabase } from './supabase'
 import { aplicarVariables } from './plantillas'
+import { htmlVacio } from './html'
+import EditorCorreo from './EditorCorreo'
 import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos, descargarArchivo } from './adjuntos'
 
 // URL del servicio de correo (server/). En desarrollo, el puerto por defecto; en producción hay que definirla.
@@ -103,11 +105,11 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
   const usarPlantilla = (id) => {
     const p = plantillas.find((x) => x.id === id)
     if (!p) return
-    if (cuerpo.trim() && !confirm('Se sustituirá lo que has escrito por la plantilla. ¿Continuar?')) return
+    if (!htmlVacio(cuerpo) && !confirm('Se sustituirá lo que has escrito por la plantilla. ¿Continuar?')) return
     const datos = { empresa, yo }
     const asuntoNuevo = aplicarVariables(p.asunto, datos).trim()
     if (asuntoNuevo) setAsunto(asuntoNuevo)
-    setCuerpo(aplicarVariables(p.cuerpo, datos))
+    setCuerpo(aplicarVariables(p.cuerpo, datos, { html: true }))
     // Los archivos de la plantilla anterior se sustituyen por los de esta; los que adjuntó el usuario se conservan
     const propios = adjuntos.filter((a) => !a.deplantilla)
     const deLaPlantilla = (p.adjuntos || []).map((a) => ({ ...a, deplantilla: true }))
@@ -152,14 +154,14 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
   const enviar = async () => {
     setErr(''); setAviso('')
     if (!para) { setErr('No hay ningún email al que escribir. Añádelo en la ficha de la empresa.'); return }
-    if (!asunto.trim() || !cuerpo.trim()) { setErr('Escribe el asunto y el mensaje.'); return }
+    if (!asunto.trim() || htmlVacio(cuerpo)) { setErr('Escribe el asunto y el mensaje.'); return }
     setEnviando(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const r = await fetch(`${API}/api/emails/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ empresa_id: empresa.id, para, asunto: asunto.trim(), cuerpo, responder_a: ultimo?.id, adjuntos: adjuntos.map(({ path, nombre }) => ({ path, nombre })) }),
+        body: JSON.stringify({ empresa_id: empresa.id, para, asunto: asunto.trim(), html: cuerpo, responder_a: ultimo?.id, adjuntos: adjuntos.map(({ path, nombre }) => ({ path, nombre })) }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || `Error ${r.status}`)
@@ -248,9 +250,8 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
             {plantillas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </div>
-        <textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={8} maxLength={20000} placeholder="Escribe tu mensaje…"
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }}
-          className="block w-full min-h-[12rem] px-4 py-3 text-[15px] leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none resize-y" />
+        <EditorCorreo valor={cuerpo} onChange={setCuerpo} onAviso={setErr} placeholder="Escribe tu mensaje…" sinBorde
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!enviando) enviar() } }} />
         {adjuntos.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-t border-slate-100">
             {adjuntos.map((a) => (
@@ -269,9 +270,9 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
               className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 transition">
               <Paperclip className={`w-3.5 h-3.5 ${subiendo ? 'animate-pulse' : ''}`} />{subiendo ? 'Subiendo…' : 'Adjuntar'}
             </button>
-          <p className="hidden sm:block text-[11px] text-slate-400 truncate">Desde el buzón compartido de IAESTE · Ctrl+Enter para enviar{cuerpo ? ` · ${cuerpo.length.toLocaleString('es-ES')}/20.000` : ''}</p>
+          <p className="hidden sm:block text-[11px] text-slate-400 truncate">Desde el buzón compartido de IAESTE · Ctrl+Enter para enviar</p>
           </div>
-          <button onClick={enviar} disabled={enviando || subiendo || !para || !cuerpo.trim()}
+          <button onClick={enviar} disabled={enviando || subiendo || !para || htmlVacio(cuerpo)}
             className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-brand-900 hover:bg-brand-700 text-white text-sm font-semibold disabled:opacity-50 transition">
             <Send className="w-4 h-4" />{enviando ? 'Enviando…' : 'Enviar'}
           </button>

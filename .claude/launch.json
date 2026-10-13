@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "correo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "correo"],
+      "port": 8787
     }
   ]
 }
