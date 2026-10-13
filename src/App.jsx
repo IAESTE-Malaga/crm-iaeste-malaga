@@ -480,7 +480,7 @@ function Auth() {
         const { data, error } = await supabase.auth.signUp({
           email: e,
           password: pass,
-          options: { data: { nombre: nombre.trim(), centro }, emailRedirectTo: volverA },
+          options: { data: { nombre: nombre.trim().replace(/\s+/g, ' '), centro }, emailRedirectTo: volverA },
         })
         if (error) throw error
         // Con «Confirm email» activado en Supabase no hay sesión hasta pulsar el enlace del correo.
@@ -1568,7 +1568,7 @@ function Puntuacion({ users, me, isAdmin }) {
 
   const exportar = () => {
     const cab = ['Puesto', 'Persona', 'Centro', 'Nivel', 'Puntos GT Empresas', 'Puntos totales']
-    const csv = [cab, ...filas.map((f) => [f.puesto, f.nombre, f.centro || '', NIVELES[f.nivel], f.gt, f.total])]
+    const csv = [cab, ...filas.map((f) => [f.puesto, f.nombre, f.centro || '', NIVELES[f.nivel], fmtPts(f.gt), fmtPts(f.total)])]
       .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n')
     const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }))
     const a = document.createElement('a')
