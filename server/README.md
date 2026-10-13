@@ -8,7 +8,7 @@ Navegador (React) ──token de sesión──► POST /api/emails/send ──SM
         └─ lee emails (Supabase + RLS)         ▼
                                         Supabase (tablas contactos, emails)
                                                ▲
-            Worker cada N min ── IMAP (imap.gmail.com:993): no leídos → guardar → marcar como leído
+            Worker cada N min ── IMAP (imap.gmail.com:993): últimos días → guardar los nuevos
 ```
 
 - Las credenciales de Gmail y la `service_role` key **solo viven en este servidor**. El navegador nunca las ve.
@@ -55,7 +55,7 @@ Los correos enviados en local aparecen en Mailpit (<http://127.0.0.1:54324>).
 **Probar Gmail de verdad**: copia `.env.example` a `server/.env`, pon tus credenciales (y borra las líneas `SMTP_*`), y ejecuta una vuelta suelta:
 
 ```bash
-npm --prefix server run sync    # lee los no leídos, los guarda y los marca como leídos
+npm --prefix server run sync    # revisa los últimos días de la bandeja y guarda los correos nuevos
 ```
 
 **Producción (Vercel)**: no hay que desplegar `server/` aparte. Define en Vercel `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD` (y `MAIL_FROM_NAME`) y deja sin definir `VITE_EMAIL_API_URL`. Comprueba `GET /api/health`. Si prefieres un hosting Node propio, `npm start` en `server/` sigue funcionando (entonces sí hacen falta `CORS_ORIGINS` y `VITE_EMAIL_API_URL`).
@@ -64,7 +64,7 @@ npm --prefix server run sync    # lee los no leídos, los guarda y los marca com
 
 **Envío** (`POST /api/emails/send`, cabecera `Authorization: Bearer <token de sesión>`): comprueba la sesión, que el usuario lleve esa empresa (o sea admin) y que el destinatario **pertenezca a la empresa** (email de la ficha o contacto suyo) — así la cuenta compartida no sirve de relé de spam. Envía por SMTP con `Message-ID` propio y cabeceras `In-Reply-To`/`References` si responde a un correo, y lo guarda ligado al contacto. El cuerpo se envía como texto + HTML escapado.
 
-**Recepción** (a demanda con `POST /api/sync`; en un servidor propio, también cada `SYNC_INTERVAL_MINUTES`, por defecto 3): conecta por IMAP, busca los **no leídos** de INBOX y por cada uno: interpreta el MIME (`mailparser`: multipart, quoted-printable/base64, charsets, cabeceras codificadas; los adjuntos se ignoran), busca la empresa y guarda. Solo **después de guardar** lo marca como leído.
+**Recepción** (a demanda con `POST /api/sync`; en un servidor propio, también cada `SYNC_INTERVAL_MINUTES`, por defecto 3): conecta por IMAP, revisa los correos de INBOX de los últimos `SYNC_LOOKBACK_DAYS` días (por defecto 7), **estén leídos o no**, y se descarga solo los que no conoce (compara por `Message-ID`). Por cada uno: interpreta el MIME (`mailparser`: multipart, quoted-printable/base64, charsets, cabeceras codificadas; los adjuntos se ignoran), busca la empresa y guarda. No cambia ningún indicador en Gmail (leído, etiquetas…).
 
 Cómo se asocia un remitente a una empresa, por orden:
 1. Ya es un contacto conocido con empresa.
@@ -74,13 +74,13 @@ Cómo se asocia un remitente a una empresa, por orden:
 
 **Duplicados**: `emails.message_id` es único y la inserción usa `upsert … ignoreDuplicates`; reprocesar el mismo correo es inocuo. Si un correo no trae `Message-ID`, se inventa uno estable a partir del contenido.
 
-**Errores**: si falla la base de datos o la red, el correo **no** se marca como leído y se reintenta en la siguiente vuelta; un correo ilegible o gigante (>15 MB) se marca como leído y se registra en el log para no atascar la cola; no hay vueltas solapadas; un corte de conexión IMAP no tumba el proceso. Si el correo salió pero no se pudo guardar, el usuario ve un aviso explícito para que no lo reenvíe.
+**Errores**: si falla la base de datos o la red, el correo se reintenta en la siguiente vuelta mientras siga dentro de la ventana de días; un correo ilegible o gigante (>15 MB) se ignora y se registra en el log, sin atascar la cola; no hay vueltas solapadas; un corte de conexión IMAP no tumba el proceso. Si el correo salió pero no se pudo guardar, el usuario ve un aviso explícito para que no lo reenvíe.
 
 ## 6. Seguridad y límites conocidos
 
 - Los correos entrantes se muestran **solo como texto plano**. `cuerpo_html` se guarda tal cual llegó pero no se pinta nunca; si algún día lo muestras, pásalo antes por un sanitizador (DOMPurify) dentro de un iframe `sandbox`.
 - Ven los correos de una empresa: los admins y su responsable. Un remitente sin clasificar solo lo ven los admins.
-- Los correos que **ya estuvieran leídos** en el buzón antes de conectar el servicio no se importan (solo los no leídos).
+- Al conectar el servicio por primera vez se importa todo lo que haya en la bandeja de los últimos `SYNC_LOOKBACK_DAYS` días (leído o no); lo anterior no se importa. Si un correo tarda más que esa ventana en sincronizarse, se pierde: no dejes el CRM sin abrir más de ese tiempo.
 - No se guardan adjuntos. Rebotes (`MAILER-DAEMON`) y newsletters que lleguen al buzón se guardan como contactos sin empresa; conviene usar un buzón dedicado.
 - Vincular a mano un contacto sin empresa todavía no tiene pantalla; se hace en Supabase Studio (`contactos.empresa_id` y `emails.empresa_id`).
 

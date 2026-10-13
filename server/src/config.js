@@ -28,6 +28,7 @@ export const config = {
   imapPort: num('IMAP_PORT', 993),
   syncEnabled: bool('SYNC_ENABLED', true),
   syncMinutes: num('SYNC_INTERVAL_MINUTES', 3),
+  syncLookbackDays: num('SYNC_LOOKBACK_DAYS', 7), // cuántos días atrás se revisa la bandeja (leídos o no)
   syncMaxPerRun: num('SYNC_MAX_PER_RUN', 100),
   maxMessageBytes: num('MAX_MESSAGE_MB', 15) * 1024 * 1024,
   // Para disparar la sincronización desde un cron externo: POST /api/sync con "Authorization: Bearer <SYNC_SECRET>"
