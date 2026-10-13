@@ -14,3 +14,6 @@ KEYS*
 *.dump
 *.sql.gz
 .vercel
+
+# Datos reales (nombres y puntos): el repo es público
+supabase/importacion/

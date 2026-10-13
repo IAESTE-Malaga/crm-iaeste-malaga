@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react'
 import { supabase } from './supabase'
 import EmailThread from './EmailThread'
 import Guia from './Guia'
@@ -6,6 +6,10 @@ import EditorCorreo from './EditorCorreo'
 import { VARIABLES, aplicarVariables } from './plantillas'
 import { limpiarHtml, htmlATexto, htmlVacio } from './html'
 import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos } from './adjuntos'
+import {
+  CENTROS, NIVELES, MINIMO_GT_EMPRESAS, CATEGORIAS, ORDEN_CATEGORIAS, conceptoDe, conceptosDe, puntosSugeridos, rangoTexto,
+  num as fmtPts, campana, campanas, dentroDe, PRIMERA_CAMPANA, PRIMERA_CAMPANA_CRM, arrastre, PUNTOS_ANTIGUEDAD, clasificar, agruparPorCategoria,
+} from './puntuaciones'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
@@ -425,6 +429,7 @@ function Auth() {
     new URLSearchParams(window.location.search).has('registro') ? 'registro' : 'login'
   ) // login | registro | olvido
   const [nombre, setNombre] = useState('')
+  const [centro, setCentro] = useState('')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [pass2, setPass2] = useState('')
@@ -465,6 +470,7 @@ function Auth() {
     try {
       if (modo === 'registro') {
         if (!nombre.trim()) throw new Error('Indica tu nombre.')
+        if (!CENTROS.includes(centro)) throw new Error('Elige el centro al que perteneces.')
         const probE = problemaEmail(e)
         if (probE) throw new Error(probE)
         const probP = problemaPass(pass)
@@ -474,7 +480,7 @@ function Auth() {
         const { data, error } = await supabase.auth.signUp({
           email: e,
           password: pass,
-          options: { data: { nombre: nombre.trim() }, emailRedirectTo: volverA },
+          options: { data: { nombre: nombre.trim(), centro }, emailRedirectTo: volverA },
         })
         if (error) throw error
         // Con «Confirm email» activado en Supabase no hay sesión hasta pulsar el enlace del correo.
@@ -557,7 +563,17 @@ function Auth() {
         )}
         <div className="space-y-3">
           {modo === 'registro' && (
-            <div><Label>Nombre</Label><Input value={nombre} autoComplete="name" onChange={(e) => setNombre(e.target.value)} placeholder="Mario" /></div>
+            <>
+              <div><Label>Nombre</Label><Input value={nombre} autoComplete="name" onChange={(e) => setNombre(e.target.value)} placeholder="Mario" /></div>
+              <div>
+                <Label>Centro</Label>
+                <select value={centro} onChange={(e) => setCentro(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white">
+                  <option value="">Elige tu centro…</option>
+                  {CENTROS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </>
           )}
           <div><Label>Email</Label><Input type="email" autoComplete="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={alPulsarEnter} /></div>
           {modo !== 'olvido' && (
@@ -1140,7 +1156,7 @@ function GraficaEmpresas({ users, companies }) {
   )
 }
 
-// Puntos por persona en [desde, hasta]. Lo usan el panel de admin (Actividad) y el Ranking.
+// Puntos por persona en [desde, hasta]. Lo usan el panel de admin (Actividad) y Puntuación.
 // Cada empresa asignada suma PUNTOS_ESTADO de su estado actual, y cuenta en el periodo en el que
 // llegó a ese estado (último cambio de estado del historial). Si no hay registro de cuándo,
 // solo cuenta en periodos que empiezan a inicio de curso o antes.
@@ -1410,83 +1426,565 @@ function Actividad({ users, companies }) {
     </div>
   )
 }
-// ---------- Ranking (solo admin) ----------
-const INICIO_MES = () => { const d = new Date(); return isoDia(new Date(d.getFullYear(), d.getMonth(), 1)) }
-function Ranking({ users, me }) {
-  const [periodo, setPeriodo] = useState('mes')
+// ---------- Puntuación (clasificación de la campaña) ----------
+// Una campaña es un curso (sep-ago). Suma lo que dan los admins por las acciones de la rúbrica (tabla `puntos`,
+// catálogo en src/puntuaciones.js) y los puntos automáticos por empresas, que cuentan como GT Empresas.
+// Cada persona ve su desglose con los motivos; de los demás, solo el total (puntuacion_resumen no trae motivos).
+const aNum = (v) => Number(String(v ?? '').replace(',', '.')) || 0
+const NIVEL_ESTILO = [
+  'bg-slate-100 text-slate-500 border-slate-200',
+  'bg-amber-50 text-amber-800 border-amber-200',
+  'bg-emerald-50 text-emerald-700 border-emerald-200',
+]
+const NivelBadge = ({ nivel }) => (
+  <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap ${NIVEL_ESTILO[nivel]}`}>{NIVELES[nivel]}</span>
+)
+const CentroBadge = ({ centro }) => centro
+  ? <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-semibold">{centro}</span>
+  : <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[11px] font-semibold">Sin centro</span>
+const signo = (n) => `${n > 0 ? '+' : ''}${fmtPts(n)}`
+
+// Apuntes de una persona por categoría + los puntos automáticos de empresas (si los hay)
+function Desglose({ apuntes, auto, onEditar, onBorrar }) {
+  const grupos = agruparPorCategoria(apuntes)
+  if (grupos.length === 0 && !auto?.puntos) return <p className="text-xs text-slate-400 py-1">Sin puntos en esta campaña.</p>
+  return (
+    <div className="space-y-4">
+      {auto?.puntos > 0 && (
+        <div>
+          <p className="flex items-baseline justify-between gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+            <span>GT Empresas · contacto con empresas <span className="normal-case font-normal text-slate-400">(automático)</span></span>
+            <span className="tabular-nums text-slate-700">{signo(auto.puntos)}</span>
+          </p>
+          <p className="text-xs text-slate-600">
+            {auto.contactadas} contactada{auto.contactadas !== 1 ? 's' : ''} · {auto.cerradas} cerrada{auto.cerradas !== 1 ? 's' : ''} · {auto.quincenas} quincena{auto.quincenas !== 1 ? 's' : ''} de seguimiento cumplida{auto.quincenas !== 1 ? 's' : ''}
+          </p>
+          <details className="mt-1">
+            <summary className="text-xs text-brand-600 cursor-pointer select-none">Ver el detalle</summary>
+            <ol className="mt-1.5 space-y-1 max-h-60 overflow-y-auto">
+              {auto.filas.filter((h) => h.puntos).map((h) => (
+                <li key={h.id} className="flex items-center gap-2 text-xs">
+                  {h.tipo === 'empresa'
+                    ? <Badge estadoId={h.estado} />
+                    : <span className={`shrink-0 px-1.5 py-0.5 rounded border font-medium ${accionDe('quincena').color}`}>Quincena</span>}
+                  <span className="flex-1 min-w-0 truncate text-slate-700">{h.empresa_nombre}</span>
+                  <span className="shrink-0 w-8 text-right tabular-nums text-slate-700 font-semibold">+{h.puntos}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </div>
+      )}
+      {grupos.map(({ cat, subtotal, filas }) => (
+        <div key={cat}>
+          <p className="flex items-baseline justify-between gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+            <span>{cat === 'INI' ? CATEGORIAS[cat].label : `${cat}. ${CATEGORIAS[cat].label}`}</span>
+            <span className="tabular-nums text-slate-700">{signo(subtotal)}</span>
+          </p>
+          <ul className="divide-y divide-slate-100">
+            {filas.map((a) => {
+              const unidad = conceptoDe(a.concepto)?.unidad
+              return (
+                <li key={a.id} className="flex items-start gap-3 text-xs py-1.5">
+                  <span className="shrink-0 w-14 text-slate-400">{fechaCorta(a.fecha)}</span>
+                  <span className="flex-1 min-w-0 text-slate-700">
+                    <span className="font-medium text-slate-800">{a.descripcion}</span>
+                    {unidad && a.cantidad > 0 && Number(a.cantidad) !== 1 ? ` ×${fmtPts(a.cantidad)}` : ''}
+                    {a.motivo && <span className="block text-slate-500">{a.motivo}</span>}
+                  </span>
+                  <span className={`shrink-0 tabular-nums font-semibold ${Number(a.puntos) ? 'text-slate-800' : 'text-slate-300'}`}>{signo(Number(a.puntos))}</span>
+                  {onEditar && (
+                    <span className="shrink-0 flex gap-0.5 -my-1">
+                      <button onClick={() => onEditar(a)} title="Editar" className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => onBorrar(a)} title="Borrar" className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Puntuacion({ users, me, isAdmin }) {
+  const hoy = HOY()
+  const camps = campanas(hoy)
+  const [campId, setCampId] = useState(camps[0].id)
+  const camp = camps.find((c) => c.id === campId) || camps[0]
+  const conAuto = camp.ini >= PRIMERA_CAMPANA_CRM // antes de eso, el CRM no se usaba: solo hay apuntes
+  const hastaAuto = camp.hasta < hoy ? camp.hasta : hoy
   const [datos, setDatos] = useState(null)
   const [err, setErr] = useState('')
-  const hasta = HOY()
-  const desde = periodo === 'mes' ? INICIO_MES() : periodo === '7' ? sumarDias(-7) : INICIO_CURSO()
+  const [info, setInfo] = useState('')
+  const [recarga, setRecarga] = useState(0)
+  const [centro, setCentro] = useState('')
+  const [abierto, setAbierto] = useState('')
+  const [modal, setModal] = useState(null) // null | { tipo: 'apunte', apunte?, persona? } | { tipo: 'campana' }
 
   useEffect(() => {
+    let vivo = true
     setDatos(null); setErr('')
-    supabase.rpc('ranking_datos', { p_hasta: hasta }).then(({ data, error }) => {
-      if (error) { setErr(`No se ha podido cargar el ranking: ${error.message}`); setDatos({ hist: [], empresas: [] }) }
-      else setDatos(data || { hist: [], empresas: [] })
-    })
-  }, [hasta])
+    ;(async () => {
+      try {
+        const [res, rk, apuntes, pend] = await Promise.all([
+          supabase.rpc('puntuacion_resumen', { p_desde: camp.desde, p_hasta: camp.hasta }),
+          conAuto ? supabase.rpc('ranking_datos', { p_hasta: hastaAuto }) : Promise.resolve({ data: null }),
+          traerTodo(() => supabase.from('puntos').select('*')
+            .gte('fecha', camp.desde).lte('fecha', camp.hasta)
+            .order('fecha', { ascending: false }).order('id', { ascending: false })),
+          isAdmin ? supabase.from('puntos').select('id', { count: 'exact', head: true }).is('usuario_id', null) : Promise.resolve({ count: 0 }),
+        ])
+        if (res.error) throw res.error
+        if (rk.error) throw rk.error
+        if (vivo) setDatos({ resumen: res.data || [], rk: rk.data, apuntes, pendientes: pend.count || 0 })
+      } catch (e) {
+        if (vivo) { setErr(`No se ha podido cargar la puntuación: ${e.message}`); setDatos({ resumen: [], rk: null, apuntes: [], pendientes: 0 }) }
+      }
+    })()
+    return () => { vivo = false }
+  }, [camp.id, recarga, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const lista = datos
-    ? calcularPuntos({ todo: datos.hist || [], companies: datos.empresas || [], users, desde, hasta })
-      .lista.filter((d) => users.some((u) => u.id === d.id))
-    : []
-  // Misma puntuación = mismo puesto
-  const puesto = (i) => (i > 0 && lista[i - 1].puntos === lista[i].puntos ? puesto(i - 1) : i + 1)
-  const max = Math.max(1, ...lista.map((d) => d.puntos))
-  const yo = lista.findIndex((d) => d.id === me.id)
+  const lista = useMemo(
+    () => datos?.rk ? calcularPuntos({ todo: datos.rk.hist || [], companies: datos.rk.empresas || [], users, desde: camp.desde, hasta: hastaAuto }).lista : [],
+    [datos, users, camp.desde, hastaAuto]
+  )
+  const autoDe = (id) => lista.find((d) => d.id === id)
+  const filas = datos ? clasificar({ resumen: datos.resumen, auto: Object.fromEntries(lista.map((d) => [d.id, d.puntos])), users }) : []
+  const yo = filas.find((f) => f.id === me.id)
+  const visibles = filas.filter((f) => !centro || f.centro === centro)
+  const apuntesDe = (id) => (datos?.apuntes || []).filter((a) => a.usuario_id === id)
   const medalla = ['bg-amber-400 text-amber-950 ring-4 ring-amber-100', 'bg-slate-300 text-slate-800 ring-4 ring-slate-100', 'bg-orange-300 text-orange-950 ring-4 ring-orange-100']
+  const recargar = () => setRecarga((r) => r + 1)
+
+  const borrar = async (a) => {
+    if (!confirm(`¿Borrar «${a.descripcion}» (${signo(Number(a.puntos))} pts)? No se puede deshacer.`)) return
+    setErr(''); setInfo('')
+    const { error } = await supabase.from('puntos').delete().eq('id', a.id)
+    if (error) setErr(error.message); else recargar()
+  }
+
+  const exportar = () => {
+    const cab = ['Puesto', 'Persona', 'Centro', 'Nivel', 'Puntos GT Empresas', 'Puntos totales']
+    const csv = [cab, ...filas.map((f) => [f.puesto, f.nombre, f.centro || '', NIVELES[f.nivel], f.gt, f.total])]
+      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n')
+    const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = `puntuacion-${camp.id}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4">
-      <div className="relative overflow-hidden bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600 rounded-2xl p-6 text-white shadow-nav"><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/10 blur-2xl" />
+    <div className="max-w-3xl mx-auto space-y-4">
+      <div className="relative overflow-clip bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600 rounded-2xl p-6 text-white shadow-nav"><div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/10 blur-2xl" />
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-lg font-bold flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-300" />Ranking del equipo</h2>
+          <h2 className="text-lg font-bold flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-300" />Puntuación</h2>
           <div className="flex gap-1 bg-white/10 rounded-full p-1">
-            {[['mes', 'Este mes'], ['curso', 'Curso'], ['7', '7 días']].map(([id, label]) => (
-              <button key={id} onClick={() => setPeriodo(id)}
-                className={`px-3 py-1 rounded-full text-sm transition-colors ${periodo === id ? 'bg-white text-brand-900 font-bold' : 'text-white/80 hover:bg-white/[0.08]'}`}>
-                {label}
+            {camps.map((c) => (
+              <button key={c.id} onClick={() => { setCampId(c.id); setAbierto('') }}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${camp.id === c.id ? 'bg-white text-brand-900 font-bold' : 'text-white/80 hover:bg-white/[0.08]'}`}>
+                {c.label}
               </button>
             ))}
           </div>
         </div>
-        {datos && yo >= 0 && (
-          <p className="mt-3 text-sm text-white/80">
-            Vas <strong className="text-white">{puesto(yo)}º</strong> de {lista.length} con <strong className="text-white">{lista[yo].puntos} punto{lista[yo].puntos !== 1 ? 's' : ''}</strong>
-            {yo > 0 && lista[yo - 1].puntos > lista[yo].puntos && <> · te faltan {lista[yo - 1].puntos - lista[yo].puntos} para subir un puesto</>}
-          </p>
+        {datos && yo && (
+          <>
+            <p className="mt-3 text-sm text-white/80">
+              Vas <strong className="text-white">{yo.puesto}º</strong> de {filas.length} con <strong className="text-white">{fmtPts(yo.total)} punto{yo.total !== 1 ? 's' : ''}</strong>
+              {' · '}nivel <strong className="text-white">{NIVELES[yo.nivel]}</strong>
+            </p>
+            <div className="mt-3">
+              <div className="h-1.5 bg-white/15 rounded-full overflow-hidden">
+                <div className="h-full bg-amber-300 rounded-full" style={{ width: `${Math.min(100, (yo.gt / MINIMO_GT_EMPRESAS) * 100)}%` }} />
+              </div>
+              <p className="text-xs text-white/70 mt-1.5">
+                {yo.practica
+                  ? 'Has conseguido una práctica de empresa en esta campaña.'
+                  : yo.gt >= MINIMO_GT_EMPRESAS
+                    ? `Mínimo de GT Empresas cumplido (${fmtPts(yo.gt)} de ${MINIMO_GT_EMPRESAS} puntos).`
+                    : `GT Empresas: ${fmtPts(yo.gt)} de ${MINIMO_GT_EMPRESAS} puntos para optar a prácticas en primer plazo.`}
+              </p>
+            </div>
+          </>
         )}
       </div>
 
       {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
-      <div className="card overflow-hidden divide-y divide-slate-100">
-        {datos === null ? (
-          <Cargando />
-        ) : lista.map((d, i) => {
-          const p = puesto(i)
-          const mio = d.id === me.id
-          return (
-            <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${mio ? 'bg-brand-50/60' : ''}`}>
-              <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${p <= 3 && d.puntos > 0 ? medalla[p - 1] : 'bg-slate-100 text-slate-500'}`}>{p}</span>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm truncate ${mio ? 'font-bold text-brand-900' : 'font-medium text-slate-800'}`}>{d.nombre}{mio && ' (tú)'}</p>
-                <div className="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                  <div className="h-full bg-brand-900 rounded-full" style={{ width: `${(d.puntos / max) * 100}%` }} />
-                </div>
-              </div>
-              {d.becas > 0 && <span className="hidden sm:inline text-xs text-emerald-700 font-medium shrink-0">{d.becas} práctica{d.becas !== 1 ? 's' : ''}</span>}
-              <span className="w-12 text-right text-sm font-bold text-slate-900 tabular-nums shrink-0">{d.puntos}</span>
-            </div>
-          )
-        })}
+      {info && <Aviso tono="ok">{info}</Aviso>}
+      {isAdmin && datos?.pendientes > 0 && (
+        <Aviso tono="info" icono={AlertCircle}>
+          Hay {datos.pendientes} apunte{datos.pendientes !== 1 ? 's' : ''} importado{datos.pendientes !== 1 ? 's' : ''} de personas que aún no tienen cuenta
+          (de todas las campañas). Se asignan solos cuando se registran con el mismo nombre.
+        </Aviso>
+      )}
+
+      <div className="card p-5 sm:p-6">
+        <h3 className="font-bold text-slate-900 mb-3">Mi desglose</h3>
+        {datos === null ? <Cargando /> : <Desglose apuntes={apuntesDe(me.id)} auto={autoDe(me.id)} />}
       </div>
-      <p className="text-xs text-slate-500 px-1">
-        Cada empresa que llevas puntúa según su estado actual: contactada (no lo cogen, mail enviado, muy interesados) 1 punto;
-        cerrada (para más adelante, otra comunidad, ya no existe, no quieren o práctica conseguida) 3 puntos en total. Máximo 3 por empresa.
-        Quincena de seguimiento cumplida: +{PUNTOS.quincena}.
+
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between gap-2 flex-wrap px-5 sm:px-6 pt-5 pb-3">
+          <h3 className="font-bold text-slate-900">Clasificación</h3>
+          {isAdmin && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => setModal({ tipo: 'apunte' })} className={`${miniBtn} !bg-brand-900 !text-white !border-brand-900 hover:!bg-brand-700`}>
+                <Plus className="w-3.5 h-3.5" />Dar puntos
+              </button>
+              {camp.ini > PRIMERA_CAMPANA && dentroDe(camp, hoy) && (
+                <button onClick={() => setModal({ tipo: 'campana' })} className={miniBtn} title="Arrastre de puntos y antigüedad al empezar la campaña">
+                  <CalendarClock className="w-3.5 h-3.5" />Preparar campaña
+                </button>
+              )}
+              <button onClick={exportar} className={miniBtn}><Download className="w-3.5 h-3.5" />CSV</button>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5 px-5 sm:px-6 pb-3">
+          <button onClick={() => setCentro('')} className={chipPeriodo(!centro)}>Todos</button>
+          {CENTROS.map((c) => <button key={c} onClick={() => setCentro(c)} className={chipPeriodo(centro === c)}>{c}</button>)}
+        </div>
+        <div className="divide-y divide-slate-100 border-t border-slate-100">
+          {datos === null ? <Cargando /> : visibles.length === 0 ? (
+            <p className="px-6 py-8 text-sm text-slate-400 text-center">Nadie en este centro.</p>
+          ) : visibles.map((f) => {
+            const mio = f.id === me.id
+            const abre = isAdmin && abierto === f.id
+            return (
+              <Fragment key={f.id}>
+                <div
+                  onClick={isAdmin ? () => setAbierto(abre ? '' : f.id) : undefined}
+                  className={`flex items-center gap-3 px-5 sm:px-6 py-3 ${mio ? 'bg-brand-50/60' : ''} ${isAdmin ? 'cursor-pointer hover:bg-slate-50/80' : ''}`}
+                >
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${f.puesto <= 3 && f.total > 0 ? medalla[f.puesto - 1] : 'bg-slate-100 text-slate-500'}`}>{f.puesto}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm truncate ${mio ? 'font-bold text-brand-900' : 'font-medium text-slate-800'}`}>{f.nombre}{mio && ' (tú)'}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <CentroBadge centro={f.centro} />
+                      <NivelBadge nivel={f.nivel} />
+                    </div>
+                  </div>
+                  <span className="w-14 text-right text-base font-bold text-slate-900 tabular-nums shrink-0">{fmtPts(f.total)}</span>
+                  {isAdmin && <ChevronRight className={`w-4 h-4 text-slate-300 shrink-0 transition-transform ${abre ? 'rotate-90' : ''}`} />}
+                </div>
+                {abre && (
+                  <div className="bg-slate-50 px-5 sm:px-6 py-4">
+                    <Desglose
+                      apuntes={apuntesDe(f.id)} auto={autoDe(f.id)}
+                      onEditar={(a) => setModal({ tipo: 'apunte', apunte: a })} onBorrar={borrar}
+                    />
+                    <button onClick={() => setModal({ tipo: 'apunte', persona: f.id })} className={`${miniBtn} mt-3`}>
+                      <Plus className="w-3.5 h-3.5" />Dar puntos a {f.nombre.split(' ')[0]}
+                    </button>
+                  </div>
+                )}
+              </Fragment>
+            )
+          })}
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-500 px-1 leading-relaxed">
+        La clasificación ordena primero por nivel (<strong>Práctica</strong>: ha conseguido una práctica de empresa; <strong>Mínimo</strong>: {MINIMO_GT_EMPRESAS} puntos
+        de GT Empresas; <strong>Pendiente</strong>: el resto), luego por puntos totales y luego por puntos de GT Empresas.
+        Los puntos de GT Empresas incluyen los que se ganan solos al llevar empresas en el CRM (contactada 1, cerrada 3, +{PUNTOS.quincena} por quincena de seguimiento cumplida).
+        {isAdmin ? ' Pulsa una persona para ver su desglose y editarlo.' : ' De los demás solo se ve el total; tu desglose está arriba.'} Una campaña va del 1 de septiembre al 31 de agosto.
       </p>
+
+      {modal?.tipo === 'apunte' && (
+        <ApunteModal
+          users={users} apunte={modal.apunte} personaInicial={modal.persona} camp={camp} hoy={hoy}
+          onClose={() => setModal(null)}
+          onSaved={(n) => { setModal(null); setInfo(n ? `Listo: se ${n === 1 ? 'ha anotado 1 apunte' : `han anotado ${n} apuntes`}.` : 'Apunte guardado.'); recargar() }}
+        />
+      )}
+      {modal?.tipo === 'campana' && (
+        <CampanaModal
+          users={users} camp={camp} hoy={hoy} onClose={() => setModal(null)}
+          onSaved={(n) => { setModal(null); setInfo(`Campaña preparada: ${n} apunte${n !== 1 ? 's' : ''} creado${n !== 1 ? 's' : ''}.`); recargar() }}
+        />
+      )}
     </div>
+  )
+}
+
+// Dar puntos a una o varias personas, o editar un apunte
+function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSaved }) {
+  const editar = !!apunte
+  const conceptoInicial = apunte ? (conceptoDe(apunte.concepto) ? apunte.concepto : `${apunte.categoria}_otro`) : 'h_reunion_conseguir'
+  const [personas, setPersonas] = useState(() => apunte ? [apunte.usuario_id] : personaInicial ? [personaInicial] : [])
+  const [buscar, setBuscar] = useState('')
+  const [centroF, setCentroF] = useState('')
+  const [cat, setCat] = useState(apunte?.categoria || conceptoDe(conceptoInicial).cat)
+  const [conceptoId, setConceptoId] = useState(conceptoInicial)
+  const conc = conceptoDe(conceptoId)
+  const libre = conc.min === undefined
+  const [cantidad, setCantidad] = useState(apunte ? String(apunte.cantidad ?? (conc.unidad ? 1 : '')) : conc.unidad ? '1' : '')
+  const [puntos, setPuntos] = useState(apunte ? String(apunte.puntos) : String(puntosSugeridos(conc, 1)))
+  const [manual, setManual] = useState(editar) // el admin ha tocado los puntos: dejar de sugerirlos
+  const [descripcion, setDescripcion] = useState(apunte && libre ? apunte.descripcion : '')
+  const [fecha, setFecha] = useState(apunte?.fecha || (dentroDe(camp, hoy) ? hoy : camp.hasta))
+  const [motivo, setMotivo] = useState(apunte?.motivo || '')
+  const [repartir, setRepartir] = useState(false)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const elegirConcepto = (id) => {
+    const cn = conceptoDe(id)
+    setConceptoId(id); setManual(false)
+    setCantidad(cn.unidad ? '1' : '')
+    setPuntos(String(puntosSugeridos(cn, 1)))
+  }
+  const elegirCat = (c) => { setCat(c); elegirConcepto(conceptosDe(c)[0].id) }
+  const cambiarCantidad = (v) => { setCantidad(v); if (!manual) setPuntos(String(puntosSugeridos(conc, aNum(v) || 1))) }
+
+  const q = buscar.trim().toLowerCase()
+  const lista = users.filter((u) => (!centroF || u.centro === centroF) && (!q || u.nombre.toLowerCase().includes(q)))
+  const alternar = (id) => setPersonas((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])
+  const todosVisibles = lista.length > 0 && lista.every((u) => personas.includes(u.id))
+  const nombrePersona = users.find((u) => u.id === apunte?.usuario_id)?.nombre
+
+  const guardar = async () => {
+    setErr('')
+    if (personas.length === 0) return setErr('Elige al menos una persona.')
+    if (String(puntos).trim() === '') return setErr('Escribe los puntos.')
+    if (libre && !descripcion.trim()) return setErr('Describe por qué se dan los puntos.')
+    if (!fecha || fecha < camp.desde || fecha > camp.hasta) return setErr(`La fecha tiene que estar dentro de ${camp.label} (${camp.desde} a ${camp.hasta}).`)
+    const cant = conc.unidad ? aNum(cantidad) : null
+    if (conc.unidad && !(cant > 0)) return setErr('La cantidad tiene que ser mayor que 0.')
+    const total = aNum(puntos)
+    const cada = repartir && personas.length > 1 ? Math.round((total / personas.length) * 100) / 100 : total
+    const base = {
+      fecha, categoria: cat,
+      concepto: editar && conceptoId === conceptoInicial ? apunte.concepto : conceptoId,
+      descripcion: libre ? descripcion.trim() : conc.texto,
+      cantidad: cant, puntos: cada, motivo: motivo.trim() || null,
+    }
+    setBusy(true)
+    const { error } = editar
+      ? await supabase.from('puntos').update(base).eq('id', apunte.id)
+      : await supabase.from('puntos').insert(personas.map((id) => ({ ...base, usuario_id: id })))
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved(editar ? 0 : personas.length)
+  }
+
+  const conceptos = conceptosDe(cat)
+  const campoSel = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white'
+  return (
+    <Modal ancho="max-w-xl" onClose={onClose}>
+      <ModalHead onClose={onClose} sub={<p className="text-xs text-slate-500 mt-0.5">{camp.label}</p>}>
+        {editar ? `Editar apunte de ${nombrePersona || 'la persona'}` : 'Dar puntos'}
+      </ModalHead>
+      <div className="px-6 py-5 space-y-4">
+        {!editar && (
+          <div>
+            <Label>Personas ({personas.length})</Label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              <Input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar por nombre…" className="!w-auto flex-1 min-w-[10rem] !py-1.5" />
+              <select value={centroF} onChange={(e) => setCentroF(e.target.value)} className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-sm bg-white">
+                <option value="">Todos los centros</option>
+                {CENTROS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+              <label className="flex items-center gap-2.5 px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-pointer">
+                <input type="checkbox" checked={todosVisibles}
+                  onChange={() => setPersonas((p) => todosVisibles ? p.filter((id) => !lista.some((u) => u.id === id)) : [...new Set([...p, ...lista.map((u) => u.id)])])} />
+                Marcar todas las que se ven ({lista.length})
+              </label>
+              {lista.map((u) => (
+                <label key={u.id} className="flex items-center gap-2.5 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50">
+                  <input type="checkbox" checked={personas.includes(u.id)} onChange={() => alternar(u.id)} />
+                  <span className="flex-1 truncate">{u.nombre}</span>
+                  <CentroBadge centro={u.centro} />
+                </label>
+              ))}
+              {lista.length === 0 && <p className="px-3 py-3 text-xs text-slate-400">Nadie coincide.</p>}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label>Categoría</Label>
+            <select value={cat} onChange={(e) => elegirCat(e.target.value)} className={campoSel}>
+              {ORDEN_CATEGORIAS.map((c) => <option key={c} value={c}>{c === 'INI' ? CATEGORIAS[c].label : `${c}. ${CATEGORIAS[c].label}`}</option>)}
+            </select>
+          </div>
+          <div>
+            <Label>Concepto</Label>
+            <select value={conceptoId} onChange={(e) => elegirConcepto(e.target.value)} className={campoSel}>
+              {conceptos.map((x) => <option key={x.id} value={x.id}>{x.texto} · {rangoTexto(x)}</option>)}
+            </select>
+          </div>
+        </div>
+        {conc.nota && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{conc.nota}</p>}
+        {libre && (
+          <div><Label>Descripción</Label><Input value={descripcion} maxLength={200} onChange={(e) => setDescripcion(e.target.value)} placeholder="Qué se ha hecho" /></div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {conc.unidad && (
+            <div><Label>Cantidad ({conc.unidad})</Label><Input inputMode="decimal" value={cantidad} onChange={(e) => cambiarCantidad(e.target.value)} /></div>
+          )}
+          <div>
+            <Label>Puntos{personas.length > 1 && repartir ? ' (total)' : ''}</Label>
+            <Input inputMode="decimal" value={puntos} onChange={(e) => { setPuntos(e.target.value); setManual(true) }} placeholder="0" />
+          </div>
+          <div><Label>Fecha</Label><Input type="date" value={fecha} min={camp.desde} max={camp.hasta} onChange={(e) => setFecha(e.target.value)} /></div>
+        </div>
+        {!libre && conc.min !== conc.max && !manual && (
+          <p className="text-xs text-slate-500 -mt-2">Rango de la rúbrica: {rangoTexto(conc)}. Se propone el mínimo; ajústalo según el trabajo.</p>
+        )}
+        {!editar && personas.length > 1 && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={repartir} onChange={(e) => setRepartir(e.target.checked)} />
+            Repartir los puntos entre las {personas.length} personas (si no, cada una recibe los puntos completos)
+          </label>
+        )}
+        <div>
+          <Label>Motivo (lo verá la persona)</Label>
+          <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} maxLength={500}
+            placeholder="Ej.: Feria de Empleo, 3 horas de stand"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500" />
+        </div>
+        {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+        <div className="flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={guardar} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : editar ? 'Guardar' : personas.length > 1 ? `Dar a ${personas.length} personas` : 'Dar puntos'}</Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Al empezar una campaña: arrastre de la mitad de los puntos de la anterior y antigüedad de cada socio.
+// Se puede repetir (p. ej. cuando se registre alguien con puntos importados): salta lo que ya está aplicado.
+function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
+  const prev = campana(camp.ini - 1)
+  const [est, setEst] = useState(null) // { [id]: { total, practica, campanas, tieneArr, tieneAnt } }
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const [anteriores, actuales, rk] = await Promise.all([
+          traerTodo(() => supabase.from('puntos').select('*').gte('fecha', prev.desde).lte('fecha', prev.hasta).order('id')),
+          traerTodo(() => supabase.from('puntos').select('*').gte('fecha', camp.desde).lte('fecha', camp.hasta).order('id')),
+          prev.ini >= PRIMERA_CAMPANA_CRM ? supabase.rpc('ranking_datos', { p_hasta: prev.hasta }) : Promise.resolve({ data: null }),
+        ])
+        if (rk.error) throw rk.error
+        const auto = rk.data
+          ? Object.fromEntries(calcularPuntos({ todo: rk.data.hist || [], companies: rk.data.empresas || [], users, desde: prev.desde, hasta: prev.hasta }).lista.map((d) => [d.id, d.puntos]))
+          : {}
+        const out = {}
+        for (const u of users) {
+          const ant = anteriores.filter((a) => a.usuario_id === u.id)
+          const total = ant.reduce((s, a) => s + Number(a.puntos), 0) + (auto[u.id] || 0)
+          const antig = ant.find((a) => a.concepto === 'antiguedad')
+          const estuvo = ant.length > 0 || (auto[u.id] || 0) > 0
+          const act = actuales.filter((a) => a.usuario_id === u.id)
+          out[u.id] = {
+            total: String(Math.round(total * 100) / 100),
+            practica: false,
+            campanas: String(estuvo ? (antig ? Number(antig.cantidad) || 0 : 0) + 1 : 0),
+            tieneArr: act.some((a) => a.concepto === 'arrastre'),
+            tieneAnt: act.some((a) => a.concepto === 'antiguedad'),
+          }
+        }
+        if (vivo) setEst(out)
+      } catch (e) { if (vivo) setErr(e.message) }
+    })()
+    return () => { vivo = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cambia = (id, campo, valor) => setEst((e) => ({ ...e, [id]: { ...e[id], [campo]: valor } }))
+
+  const aplicar = async () => {
+    setErr('')
+    const rows = []
+    for (const u of users) {
+      const f = est[u.id]
+      const total = aNum(f.total)
+      const arr = arrastre(total, f.practica)
+      if (!f.tieneArr && (arr > 0 || (f.practica && total >= 10))) {
+        rows.push({
+          usuario_id: u.id, fecha: camp.desde, categoria: 'INI', concepto: 'arrastre', descripcion: 'Arrastre de la campaña anterior', puntos: arr,
+          motivo: f.practica ? `Disfrutó práctica: no se arrastra (eran ${fmtPts(total)} pts de ${prev.label})` : `Mitad de ${fmtPts(total)} pts de ${prev.label}`,
+        })
+      }
+      const cam = Math.max(0, Math.round(aNum(f.campanas)))
+      if (!f.tieneAnt && cam > 0) {
+        rows.push({
+          usuario_id: u.id, fecha: camp.desde, categoria: 'INI', concepto: 'antiguedad', descripcion: 'Antigüedad (campañas completadas)',
+          cantidad: cam, puntos: cam * PUNTOS_ANTIGUEDAD, motivo: `${cam} campaña${cam !== 1 ? 's' : ''}: ${cam * PUNTOS_ANTIGUEDAD} pts.`,
+        })
+      }
+    }
+    if (rows.length === 0) return setErr('No hay nada que aplicar: todo está ya anotado o a cero.')
+    setBusy(true)
+    for (let i = 0; i < rows.length; i += 100) {
+      const { error } = await supabase.from('puntos').insert(rows.slice(i, i + 100))
+      if (error) { setBusy(false); return setErr(error.message) }
+    }
+    setBusy(false)
+    onSaved(rows.length)
+  }
+
+  return (
+    <Modal ancho="max-w-3xl" onClose={onClose}>
+      <ModalHead onClose={onClose} sub={<p className="text-xs text-slate-500 mt-0.5">Se anotan con fecha {fechaCorta(camp.desde)} de {camp.label}</p>}>
+        Preparar {camp.label}
+      </ModalHead>
+      <div className="px-6 py-5 space-y-4">
+        <p className="text-sm text-slate-600">
+          <strong>Arrastre:</strong> la mitad de los puntos de {prev.label}, salvo que fueran menos de 10 o que la persona haya disfrutado una práctica.
+          {' '}<strong>Antigüedad:</strong> {PUNTOS_ANTIGUEDAD} puntos por campaña completada. Revisa y corrige lo que haga falta antes de aplicar.
+        </p>
+        {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+        {est === null && !err ? <Cargando /> : est && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-slate-400 uppercase tracking-wide text-left">
+                  <th className="font-medium pb-2">Persona</th>
+                  <th className="font-medium pb-2 px-2">Pts {prev.label}</th>
+                  <th className="font-medium pb-2 px-2">Práctica</th>
+                  <th className="font-medium pb-2 px-2 text-right">Arrastre</th>
+                  <th className="font-medium pb-2 px-2">Campañas</th>
+                  <th className="font-medium pb-2 pl-2 text-right">Antigüedad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => {
+                  const f = est[u.id]
+                  return (
+                    <tr key={u.id} className="border-t border-slate-100">
+                      <td className="py-1.5 pr-2"><span className="block truncate max-w-[12rem]">{u.nombre}</span><CentroBadge centro={u.centro} /></td>
+                      <td className="px-2"><Input value={f.total} inputMode="decimal" onChange={(e) => cambia(u.id, 'total', e.target.value)} className="!w-20 !py-1" /></td>
+                      <td className="px-2"><input type="checkbox" checked={f.practica} onChange={(e) => cambia(u.id, 'practica', e.target.checked)} title="Ha disfrutado una práctica: no arrastra" /></td>
+                      <td className={`px-2 text-right tabular-nums ${f.tieneArr ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneArr ? 'ya está' : fmtPts(arrastre(aNum(f.total), f.practica))}</td>
+                      <td className="px-2"><Input value={f.campanas} inputMode="numeric" onChange={(e) => cambia(u.id, 'campanas', e.target.value)} className="!w-16 !py-1" /></td>
+                      <td className={`pl-2 text-right tabular-nums ${f.tieneAnt ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneAnt ? 'ya está' : fmtPts(Math.max(0, Math.round(aNum(f.campanas))) * PUNTOS_ANTIGUEDAD)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={aplicar} disabled={busy || !est}><Save className="w-4 h-4" />{busy ? 'Aplicando…' : 'Aplicar'}</Btn>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -1765,8 +2263,22 @@ function Equipo({ users, companies, me, onChanged }) {
     else onChanged()
   }
 
+  const cambiarCentro = async (u, centro) => {
+    setErr('')
+    const { error } = await supabase.from('profiles').update({ centro: centro || null }).eq('id', u.id)
+    if (error) setErr(error.message)
+    else onChanged()
+  }
+  const sinCentro = users.filter((u) => !u.centro).length
+
   return (
     <div className="max-w-2xl mx-auto space-y-4">
+      {sinCentro > 0 && (
+        <Aviso tono="warn" icono={AlertTriangle}>
+          {sinCentro} persona{sinCentro !== 1 ? 's' : ''} sin centro. Elígelo en el desplegable junto a su nombre:
+          hace falta para la clasificación de Puntuación.
+        </Aviso>
+      )}
       <Aviso tono="info" icono={UserPlus}>
         Para incorporar a alguien: pídele que se <strong>registre</strong> en esta misma página. Aparecerá aquí
         como miembro y podrás asignarle empresas o hacerle admin. Si alguien olvida su contraseña,
@@ -1830,6 +2342,15 @@ function Equipo({ users, companies, me, onChanged }) {
                   <KeyRound className="w-3.5 h-3.5" />
                 </button>
               )}
+            <select
+              value={u.centro || ''}
+              onChange={(e) => cambiarCentro(u, e.target.value)}
+              title="Centro al que pertenece"
+              className={`px-3 py-1.5 rounded-xl border text-sm bg-white ${u.centro ? 'border-slate-200' : 'border-amber-300 bg-amber-50 text-amber-800'}`}
+            >
+              <option value="">Sin centro</option>
+              {CENTROS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
             <select
               value={u.rol}
               onChange={(e) => cambiarRol(u, e.target.value)}
@@ -2240,7 +2761,8 @@ export default function App() {
   const NAV = [
     ['empresas', 'Empresas', Building2],
     ['plantillas', 'Plantillas', FileText],
-    ...(isAdmin ? [['seguimiento', 'Seguimiento', History], ['equipo', 'Equipo', Users], ['ranking', 'Ranking', Trophy]] : []),
+    ['puntuacion', 'Puntos', Trophy],
+    ...(isAdmin ? [['seguimiento', 'Seguimiento', History], ['equipo', 'Equipo', Users]] : []),
     ['guia', 'Guía', BookOpen],
   ]
   const TITULOS = {
@@ -2249,7 +2771,7 @@ export default function App() {
     guia: ['Guía de uso', 'Cómo trabajar con el CRM paso a paso'],
     seguimiento: ['Seguimiento', 'Últimos cambios y notas del equipo'],
     equipo: ['Equipo', 'Personas, reparto de empresas y puntos'],
-    ranking: ['Ranking', 'Quién lidera el equipo'],
+    puntuacion: ['Puntuación', 'Tus puntos de la campaña y la clasificación del equipo'],
   }
   const [titulo, subtitulo] = TITULOS[tab] || TITULOS.empresas
   const mias = companies.filter((c) => c.responsable === me.id)
@@ -2347,8 +2869,8 @@ export default function App() {
           <Guia isAdmin={isAdmin} />
         ) : tab === 'plantillas' ? (
           <Plantillas users={users} me={me} isAdmin={isAdmin} />
-        ) : tab === 'ranking' && isAdmin ? (
-          <Ranking users={users} me={me} />
+        ) : tab === 'puntuacion' ? (
+          <Puntuacion users={users} me={me} isAdmin={isAdmin} />
         ) : tab === 'seguimiento' && isAdmin ? (
           <Seguimiento users={users} companies={companies} version={claveEmpresas} onAbrir={setModal} />
         ) : tab === 'equipo' && isAdmin ? (

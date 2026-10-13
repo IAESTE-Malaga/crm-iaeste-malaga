@@ -37,6 +37,7 @@ export default function Guia({ isAdmin }) {
     ['agenda', 'Avisos y seguimiento', CalendarClock],
     ['correo', 'Correos', Mail],
     ['plantillas', 'Plantillas', FileText],
+    ['puntuacion', 'Puntuación', Trophy],
     ...(isAdmin ? [['admin', 'Para admins', Shield]] : []),
     ['dudas', 'Dudas frecuentes', HelpCircle],
   ]
@@ -59,7 +60,7 @@ export default function Guia({ isAdmin }) {
           <B> cuándo toca volver a contactar</B>. El ciclo de trabajo es siempre el mismo:
         </p>
         <Pasos>
-          <li>Un admin te asigna un lote de empresas. Aparecen en <B>Empresas → Empresas disponibles</B> (estado «Sin contactar»).</li>
+          <li>Al registrarte eliges tu <B>centro</B> (IDML, IFML, QMML, AQML o TLML). Un admin te asigna un lote de empresas. Aparecen en <B>Empresas → Empresas disponibles</B> (estado «Sin contactar»).</li>
           <li>Contacta con ellas por teléfono y por correo (ver <button onClick={() => ir('correo')} className="text-brand-600 hover:underline">Correos</button>).</li>
           <li>Abre la ficha de la empresa, actualiza el <B>estado</B>, escribe una <B>nota</B> con lo que se ha hablado y, si hace falta, fija el <B>próximo contacto</B>. Pulsa <B>Guardar</B>.</li>
           <li>Vuelve a ellas cuando te lo indiquen los avisos («Para hoy», «Atrasadas», «Realizar seguimiento»).</li>
@@ -144,12 +145,31 @@ export default function Guia({ isAdmin }) {
         </Lista>
       </Seccion>
 
+      <Seccion id="puntuacion" icono={Trophy} titulo="Puntuación">
+        <p>
+          La pestaña <B>Puntos</B> muestra tu puntuación de la <B>campaña</B> (de septiembre a agosto) y la clasificación del equipo.
+          Tu puntuación se compone de dos partes:
+        </p>
+        <Lista>
+          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): cada empresa puntúa según su estado actual (contactada 1, cerrada 3, máximo 3 por empresa) y cada quincena de seguimiento cumplida da 10 puntos.</li>
+          <li><B>Puntos que anota un admin</B> por lo que haces en el comité local y en los grupos de trabajo (reuniones, stands, despacho, redes sociales, outgoing…), con la rúbrica de la campaña. Los ves en <B>Mi desglose</B> con la fecha y el motivo de cada uno.</li>
+        </Lista>
+        <p>
+          De los demás solo ves el total. La clasificación ordena primero por nivel: <B>Práctica</B> (has conseguido una práctica de empresa), <B>Mínimo</B> (30 puntos de GT Empresas,
+          que es lo que hace falta para optar a prácticas en primer plazo) y <B>Pendiente</B>; después por puntos totales y por puntos de GT Empresas.
+          Al empezar una campaña se suman la <B>antigüedad</B> (5 por campaña) y el <B>arrastre</B> de la mitad de los puntos de la anterior (nada si tenías menos de 10 o disfrutaste una práctica).
+        </p>
+        <p>Si ves algún punto que no te cuadra, pregunta a un admin: puede editar el apunte.</p>
+      </Seccion>
+
       {isAdmin && (
         <Seccion id="admin" icono={Shield} titulo="Para admins">
           <Lista>
-            <li><B><Users className="inline w-3.5 h-3.5 -mt-0.5" /> Equipo:</B> reparte empresas (botones <B>+5</B> / <B>−5</B> por persona, que asignan o devuelven al bote común empresas sin contactar), cambia roles (miembro/admin) y pon una contraseña temporal a quien la haya olvidado.</li>
+            <li><B><Users className="inline w-3.5 h-3.5 -mt-0.5" /> Equipo:</B> reparte empresas (botones <B>+5</B> / <B>−5</B> por persona, que asignan o devuelven al bote común empresas sin contactar), cambia roles (miembro/admin), asigna el <B>centro</B> (IDML, IFML, QMML, AQML o TLML) a quien no lo tenga y pon una contraseña temporal a quien la haya olvidado.</li>
             <li><B><History className="inline w-3.5 h-3.5 -mt-0.5" /> Seguimiento:</B> últimos cambios y notas de todo el equipo, filtrables por persona.</li>
-            <li><B><Trophy className="inline w-3.5 h-3.5 -mt-0.5" /> Ranking y puntos:</B> solo lo ves tú. Cada empresa puntúa según su estado actual (contactada 1, cerrada 3) más un bonus por quincena cumplida. Los miembros no ven el ranking.</li>
+            <li><B><Trophy className="inline w-3.5 h-3.5 -mt-0.5" /> Puntuación:</B> con <B>Dar puntos</B> eliges una o varias personas, la categoría y el concepto de la rúbrica (los puntos se rellenan solos y los puedes ajustar), la fecha y un motivo que verá la persona. Pulsa una persona de la clasificación para ver, editar o borrar sus apuntes.
+              Al empezar una campaña usa <B>Preparar campaña</B>: calcula el arrastre y la antigüedad de todos (revísalos antes de aplicar; se puede repetir sin duplicar). Los apuntes importados de gente que aún no tiene cuenta se les asignan solos al registrarse con el mismo nombre.
+              Los puntos por empresas del CRM (contactada 1, cerrada 3, quincena cumplida) se suman solos como GT Empresas; en <B>Equipo</B> sigue la tabla detallada.</li>
             <li><B><Star className="inline w-3.5 h-3.5 -mt-0.5" /> Prioritarias:</B> al conseguir una práctica, registra año y nº de prácticas desde la ficha; la empresa pasa sola al apartado «Prioritarias».</li>
             <li><B>Asignación rápida:</B> filtra por «Sin asignar» en Empresas, marca las que quieras y asígnalas de golpe. También puedes exportar la lista a Excel.</li>
             <li><B>Plantillas:</B> puedes editar y borrar las de cualquiera, incluida la de serie.</li>

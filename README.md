@@ -1,6 +1,6 @@
 # CRM IAESTE Málaga
 
-Aplicación web para gestionar el contacto con empresas del comité: quién habla con quién, en qué punto está cada conversación, cuándo toca el siguiente seguimiento y plantillas de correo compartidas y, para los admins, un ranking de puntos del equipo.
+Aplicación web para gestionar el contacto con empresas del comité: quién habla con quién, en qué punto está cada conversación, cuándo toca el siguiente seguimiento y plantillas de correo compartidas y una puntuación de campaña con clasificación del equipo.
 
 **Stack:** React 18 + Vite + Tailwind CSS v4 + Supabase (Auth + Postgres con Row Level Security). Despliegue íntegro en Vercel (web + API de correo) y Supabase.
 
@@ -8,8 +8,8 @@ Aplicación web para gestionar el contacto con empresas del comité: quién habl
 
 | Rol | Qué puede hacer |
 |---|---|
-| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas prioritarias), cambiar roles, poner contraseñas temporales |
-| **Miembro** | Ver todas las empresas (las ajenas en solo lectura). Crear empresas (quedan asignadas a él) y, en las suyas, editar contacto, CIF, estado, notas y próximo contacto |
+| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas prioritarias), cambiar roles y centros, poner contraseñas temporales, dar y editar puntos de la rúbrica |
+| **Miembro** | Ver todas las empresas (las ajenas en solo lectura). Crear empresas (quedan asignadas a él) y, en las suyas, editar contacto, CIF, estado, notas y próximo contacto. Ver su desglose de puntos y el total de los demás |
 
 Las reglas están impuestas en la base de datos (políticas RLS y triggers), no solo en la interfaz. El primer usuario que se registra en una base vacía es admin. Siempre tiene que quedar al menos un admin.
 
@@ -62,6 +62,15 @@ Si te registras con un email nuevo, el correo de confirmación llega a **Mailpit
 
 ---
 
+## Puntuaciones y centros
+
+Cada persona elige su **centro** (IDML, IFML, QMML, AQML o TLML) al registrarse; un admin puede cambiarlo en Equipo. La pestaña **Puntos** suma, por campaña (curso de septiembre a agosto), los puntos automáticos por empresas del CRM (cuentan como GT Empresas) y los apuntes que dan los admins según la rúbrica. El catálogo de conceptos vive en `src/puntuaciones.js`: ahí se edita cuando cambie la rúbrica.
+
+- Cada persona ve su desglose con motivos; de los demás, solo el total (RLS en la tabla `puntos` y RPC `puntuacion_resumen`).
+- Clasificación: nivel (Práctica > Mínimo de 30 pts de GT Empresas > Pendiente), total y GT Empresas.
+- Al empezar campaña, el admin usa **Preparar campaña** (arrastre de la mitad de los puntos y antigüedad).
+- Los apuntes pueden importarse sin cuenta (`usuario_id` nulo, con `socio_nombre`): se vinculan solos cuando alguien se registra con el mismo nombre. Importar datos reales (nombres) **no se hace desde el repo**, que es público: se aplica el SQL a mano con el CLI de Supabase.
+
 ## Correo (enviar y recibir desde la ficha de cada empresa)
 
 Cada empresa tiene un hilo de correos y una caja para responder, usando un buzón compartido de Gmail por SMTP/IMAP (el equipo no necesita acceso a la cuenta de Google). Lo hace un pequeño servicio Node en `server/`: guía completa, variables y cómo crear la contraseña de aplicación en [`server/README.md`](server/README.md).
@@ -92,6 +101,7 @@ La anon key es pública por diseño; la seguridad la imponen las políticas RLS.
 ```
 src/App.jsx                  toda la aplicación (un solo fichero a propósito)
 src/supabase.js              cliente de Supabase
+src/puntuaciones.js          rúbrica de puntos (catálogo) y cálculo de la clasificación
 public/                      logos
 supabase/migrations/         esquema de la base de datos (fuente de verdad)
 server/                      servicio de correo SMTP/IMAP (Node)
