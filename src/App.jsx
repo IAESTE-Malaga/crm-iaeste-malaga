@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { supabase } from './supabase'
 import EmailThread from './EmailThread'
+import Guia from './Guia'
 import { VARIABLES, aplicarVariables } from './plantillas'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
   Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
-  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users, FileText,
+  History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users, FileText, BookOpen,
 } from 'lucide-react'
 
 // ---------- Config ----------
@@ -2171,10 +2172,12 @@ export default function App() {
     ['empresas', 'Empresas', Building2],
     ['plantillas', 'Plantillas', FileText],
     ...(isAdmin ? [['seguimiento', 'Seguimiento', History], ['equipo', 'Equipo', Users], ['ranking', 'Ranking', Trophy]] : []),
+    ['guia', 'Guía', BookOpen],
   ]
   const TITULOS = {
     empresas: ['Empresas', isAdmin ? 'Todas las empresas del equipo' : 'Tus empresas y las del equipo'],
     plantillas: ['Plantillas', 'Textos para los correos a empresas'],
+    guia: ['Guía de uso', 'Cómo trabajar con el CRM paso a paso'],
     seguimiento: ['Seguimiento', 'Últimos cambios y notas del equipo'],
     equipo: ['Equipo', 'Personas, reparto de empresas y puntos'],
     ranking: ['Ranking', 'Quién lidera el equipo'],
@@ -2271,7 +2274,9 @@ export default function App() {
               </span>
             </Aviso>
           )}
-        {tab === 'plantillas' ? (
+        {tab === 'guia' ? (
+          <Guia isAdmin={isAdmin} />
+        ) : tab === 'plantillas' ? (
           <Plantillas users={users} me={me} isAdmin={isAdmin} />
         ) : tab === 'ranking' && isAdmin ? (
           <Ranking users={users} me={me} />
