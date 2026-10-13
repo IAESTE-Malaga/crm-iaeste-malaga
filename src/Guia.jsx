@@ -157,7 +157,7 @@ export default function Guia({ isAdmin }) {
         <p>
           De los demás solo ves el total. La clasificación ordena primero por nivel: <B>Práctica</B> (has conseguido una práctica de empresa), <B>Mínimo</B> (30 puntos de GT Empresas,
           que es lo que hace falta para optar a prácticas en primer plazo) y <B>Pendiente</B>; después por puntos totales y por puntos de GT Empresas.
-          Al empezar una campaña se suman la <B>antigüedad</B> (5 por campaña) y el <B>arrastre</B> de la mitad de los puntos de la anterior (nada si tenías menos de 10 o disfrutaste una práctica).
+          Al empezar una campaña un admin anota tu <B>antigüedad</B> (5 por campaña) y el <B>arrastre</B> de la mitad de los puntos de la anterior (nada si tenías menos de 10 o disfrutaste una práctica).
         </p>
         <p>Si ves algún punto que no te cuadra, pregunta a un admin: puede editar el apunte.</p>
       </Seccion>
@@ -168,7 +168,7 @@ export default function Guia({ isAdmin }) {
             <li><B><Users className="inline w-3.5 h-3.5 -mt-0.5" /> Equipo:</B> reparte empresas (botones <B>+5</B> / <B>−5</B> por persona, que asignan o devuelven al bote común empresas sin contactar), cambia roles (miembro/admin), asigna el <B>centro</B> (IDML, IFML, QMML, AQML o TLML) a quien no lo tenga y pon una contraseña temporal a quien la haya olvidado.</li>
             <li><B><History className="inline w-3.5 h-3.5 -mt-0.5" /> Seguimiento:</B> últimos cambios y notas de todo el equipo, filtrables por persona.</li>
             <li><B><Trophy className="inline w-3.5 h-3.5 -mt-0.5" /> Puntuación:</B> con <B>Dar puntos</B> eliges una o varias personas, la categoría y el concepto de la rúbrica (los puntos se rellenan solos y los puedes ajustar), la fecha y un motivo que verá la persona. Pulsa una persona de la clasificación para ver, editar o borrar sus apuntes.
-              Al empezar una campaña usa <B>Preparar campaña</B>: calcula el arrastre y la antigüedad de todos (revísalos antes de aplicar; se puede repetir sin duplicar). Los apuntes importados de gente que aún no tiene cuenta se les asignan solos al registrarse con el mismo nombre.
+              Antigüedad y arrastre se anotan al empezar la campaña con <B>Dar puntos</B> (categoría «Inicio de campaña»). Los apuntes importados de gente que aún no tiene cuenta se les asignan solos al registrarse con el mismo nombre.
               Los puntos por empresas del CRM (contactada 1, cerrada 3, quincena cumplida) se suman solos como GT Empresas; en <B>Equipo</B> sigue la tabla detallada.</li>
             <li><B><Star className="inline w-3.5 h-3.5 -mt-0.5" /> Prioritarias:</B> al conseguir una práctica, registra año y nº de prácticas desde la ficha; la empresa pasa sola al apartado «Prioritarias».</li>
             <li><B>Asignación rápida:</B> filtra por «Sin asignar» en Empresas, marca las que quieras y asígnalas de golpe. También puedes exportar la lista a Excel.</li>

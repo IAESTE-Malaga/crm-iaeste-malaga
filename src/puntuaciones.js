@@ -42,7 +42,7 @@ const REPARTO2 = 'Hasta 2 personas; si son más, los puntos se reparten entre to
 export const CATALOGO = [
   // Inicio de campaña
   c('antiguedad', 'INI', 'Antigüedad (campañas completadas)', 5, 5, { unidad: 'campaña' }),
-  c('arrastre', 'INI', 'Arrastre de la campaña anterior', undefined, undefined, { nota: 'Se calcula desde «Preparar campaña».' }),
+  c('arrastre', 'INI', 'Arrastre de la campaña anterior', undefined, undefined, { nota: 'La mitad de los puntos de la campaña anterior (nada si eran menos de 10 o si disfrutó una práctica).' }),
 
   // A. Pertenencia a la junta directiva o cargo de coordinador
   c('a_presidencia', 'A', 'Presidencia', 10, 10, { unidad: 'tramo', nota: TRAMO }),
@@ -209,14 +209,6 @@ export function campanas(hoyIso) {
   return out
 }
 export const dentroDe = (camp, iso) => iso >= camp.desde && iso <= camp.hasta
-
-// ---------- Arrastre a la campaña siguiente ----------
-// Se arrastra la mitad de los puntos, salvo que fueran menos de 10 o que la persona haya disfrutado una práctica.
-export const arrastre = (totalAnterior, disfrutoPractica) =>
-  disfrutoPractica || (Number(totalAnterior) || 0) < 10 ? 0 : Math.round(Number(totalAnterior) * 50) / 100
-
-// Antigüedad: 5 puntos por campaña completada
-export const PUNTOS_ANTIGUEDAD = 5
 
 // ---------- Clasificación ----------
 // resumen: filas de puntuacion_resumen() { usuario_id, total, gt, practica }

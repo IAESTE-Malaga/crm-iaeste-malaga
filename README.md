@@ -68,7 +68,7 @@ Cada persona elige su **centro** (IDML, IFML, QMML, AQML o TLML) al registrarse;
 
 - Cada persona ve su desglose con motivos; de los demás, solo el total (RLS en la tabla `puntos` y RPC `puntuacion_resumen`).
 - Clasificación: nivel (Práctica > Mínimo de 30 pts de GT Empresas > Pendiente), total y GT Empresas.
-- Al empezar campaña, el admin usa **Preparar campaña** (arrastre de la mitad de los puntos y antigüedad).
+- Al empezar campaña, el admin anota con **Dar puntos** la antigüedad (5 por campaña) y el arrastre (la mitad de los puntos, nada si eran menos de 10 o hubo práctica), categoría «Inicio de campaña».
 - Los apuntes pueden importarse sin cuenta (`usuario_id` nulo, con `socio_nombre`): se vinculan solos cuando alguien se registra con el mismo nombre. Importar datos reales (nombres) **no se hace desde el repo**, que es público: se aplica el SQL a mano con el CLI de Supabase.
 
 ## Correo (enviar y recibir desde la ficha de cada empresa)

@@ -8,7 +8,7 @@ import { limpiarHtml, htmlATexto, htmlVacio } from './html'
 import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos } from './adjuntos'
 import {
   CENTROS, NIVELES, MINIMO_GT_EMPRESAS, CATEGORIAS, ORDEN_CATEGORIAS, conceptoDe, conceptosDe, puntosSugeridos, rangoTexto,
-  num as fmtPts, campana, campanas, dentroDe, PRIMERA_CAMPANA, PRIMERA_CAMPANA_CRM, arrastre, PUNTOS_ANTIGUEDAD, clasificar, agruparPorCategoria,
+  num as fmtPts, campanas, dentroDe, PRIMERA_CAMPANA_CRM, clasificar, agruparPorCategoria,
 } from './puntuaciones'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
@@ -1522,7 +1522,7 @@ function Puntuacion({ users, me, isAdmin }) {
   const [recarga, setRecarga] = useState(0)
   const [centro, setCentro] = useState('')
   const [abierto, setAbierto] = useState('')
-  const [modal, setModal] = useState(null) // null | { tipo: 'apunte', apunte?, persona? } | { tipo: 'campana' }
+  const [modal, setModal] = useState(null) // null | { tipo: 'apunte', apunte?, persona? }
 
   useEffect(() => {
     let vivo = true
@@ -1634,11 +1634,6 @@ function Puntuacion({ users, me, isAdmin }) {
               <button onClick={() => setModal({ tipo: 'apunte' })} className={`${miniBtn} !bg-brand-900 !text-white !border-brand-900 hover:!bg-brand-700`}>
                 <Plus className="w-3.5 h-3.5" />Dar puntos
               </button>
-              {camp.ini > PRIMERA_CAMPANA && dentroDe(camp, hoy) && (
-                <button onClick={() => setModal({ tipo: 'campana' })} className={miniBtn} title="Arrastre de puntos y antigüedad al empezar la campaña">
-                  <CalendarClock className="w-3.5 h-3.5" />Preparar campaña
-                </button>
-              )}
               <button onClick={exportar} className={miniBtn}><Download className="w-3.5 h-3.5" />CSV</button>
             </div>
           )}
@@ -1699,12 +1694,6 @@ function Puntuacion({ users, me, isAdmin }) {
           users={users} apunte={modal.apunte} personaInicial={modal.persona} camp={camp} hoy={hoy}
           onClose={() => setModal(null)}
           onSaved={(n) => { setModal(null); setInfo(n ? `Listo: se ${n === 1 ? 'ha anotado 1 apunte' : `han anotado ${n} apuntes`}.` : 'Apunte guardado.'); recargar() }}
-        />
-      )}
-      {modal?.tipo === 'campana' && (
-        <CampanaModal
-          users={users} camp={camp} hoy={hoy} onClose={() => setModal(null)}
-          onSaved={(n) => { setModal(null); setInfo(`Campaña preparada: ${n} apunte${n !== 1 ? 's' : ''} creado${n !== 1 ? 's' : ''}.`); recargar() }}
         />
       )}
     </div>
@@ -1856,132 +1845,6 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
         <div className="flex justify-end gap-2">
           <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
           <Btn onClick={guardar} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : editar ? 'Guardar' : personas.length > 1 ? `Dar a ${personas.length} personas` : 'Dar puntos'}</Btn>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// Al empezar una campaña: arrastre de la mitad de los puntos de la anterior y antigüedad de cada socio.
-// Se puede repetir (p. ej. cuando se registre alguien con puntos importados): salta lo que ya está aplicado.
-function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
-  const prev = campana(camp.ini - 1)
-  const [est, setEst] = useState(null) // { [id]: { total, practica, campanas, tieneArr, tieneAnt } }
-  const [err, setErr] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let vivo = true
-    ;(async () => {
-      try {
-        const [anteriores, actuales, rk] = await Promise.all([
-          traerTodo(() => supabase.from('puntos').select('*').gte('fecha', prev.desde).lte('fecha', prev.hasta).order('id')),
-          traerTodo(() => supabase.from('puntos').select('*').gte('fecha', camp.desde).lte('fecha', camp.hasta).order('id')),
-          prev.ini >= PRIMERA_CAMPANA_CRM ? supabase.rpc('ranking_datos', { p_hasta: prev.hasta }) : Promise.resolve({ data: null }),
-        ])
-        if (rk.error) throw rk.error
-        const auto = rk.data
-          ? Object.fromEntries(calcularPuntos({ todo: rk.data.hist || [], companies: rk.data.empresas || [], users, desde: prev.desde, hasta: prev.hasta }).lista.map((d) => [d.id, d.puntos]))
-          : {}
-        const out = {}
-        for (const u of users) {
-          const ant = anteriores.filter((a) => a.usuario_id === u.id)
-          const total = ant.reduce((s, a) => s + Number(a.puntos), 0) + (auto[u.id] || 0)
-          const antig = ant.find((a) => a.concepto === 'antiguedad')
-          const estuvo = ant.length > 0 || (auto[u.id] || 0) > 0
-          const act = actuales.filter((a) => a.usuario_id === u.id)
-          out[u.id] = {
-            total: String(Math.round(total * 100) / 100),
-            practica: false,
-            campanas: String(estuvo ? (antig ? Number(antig.cantidad) || 0 : 0) + 1 : 0),
-            tieneArr: act.some((a) => a.concepto === 'arrastre'),
-            tieneAnt: act.some((a) => a.concepto === 'antiguedad'),
-          }
-        }
-        if (vivo) setEst(out)
-      } catch (e) { if (vivo) setErr(e.message) }
-    })()
-    return () => { vivo = false }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const cambia = (id, campo, valor) => setEst((e) => ({ ...e, [id]: { ...e[id], [campo]: valor } }))
-
-  const aplicar = async () => {
-    setErr('')
-    const rows = []
-    for (const u of users) {
-      const f = est[u.id]
-      const total = aNum(f.total)
-      const arr = arrastre(total, f.practica)
-      if (!f.tieneArr && (arr > 0 || (f.practica && total >= 10))) {
-        rows.push({
-          usuario_id: u.id, fecha: camp.desde, categoria: 'INI', concepto: 'arrastre', descripcion: 'Arrastre de la campaña anterior', puntos: arr,
-          motivo: f.practica ? `Disfrutó práctica: no se arrastra (eran ${fmtPts(total)} pts de ${prev.label})` : `Mitad de ${fmtPts(total)} pts de ${prev.label}`,
-        })
-      }
-      const cam = Math.max(0, Math.round(aNum(f.campanas)))
-      if (!f.tieneAnt && cam > 0) {
-        rows.push({
-          usuario_id: u.id, fecha: camp.desde, categoria: 'INI', concepto: 'antiguedad', descripcion: 'Antigüedad (campañas completadas)',
-          cantidad: cam, puntos: cam * PUNTOS_ANTIGUEDAD, motivo: `${cam} campaña${cam !== 1 ? 's' : ''}: ${cam * PUNTOS_ANTIGUEDAD} pts.`,
-        })
-      }
-    }
-    if (rows.length === 0) return setErr('No hay nada que aplicar: todo está ya anotado o a cero.')
-    setBusy(true)
-    for (let i = 0; i < rows.length; i += 100) {
-      const { error } = await supabase.from('puntos').insert(rows.slice(i, i + 100))
-      if (error) { setBusy(false); return setErr(error.message) }
-    }
-    setBusy(false)
-    onSaved(rows.length)
-  }
-
-  return (
-    <Modal ancho="max-w-3xl" onClose={onClose}>
-      <ModalHead onClose={onClose} sub={<p className="text-xs text-slate-500 mt-0.5">Se anotan con fecha {fechaCorta(camp.desde)} de {camp.label}</p>}>
-        Preparar {camp.label}
-      </ModalHead>
-      <div className="px-6 py-5 space-y-4">
-        <p className="text-sm text-slate-600">
-          <strong>Arrastre:</strong> la mitad de los puntos de {prev.label}, salvo que fueran menos de 10 o que la persona haya disfrutado una práctica.
-          {' '}<strong>Antigüedad:</strong> {PUNTOS_ANTIGUEDAD} puntos por campaña completada. Revisa y corrige lo que haga falta antes de aplicar.
-        </p>
-        {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
-        {est === null && !err ? <Cargando /> : est && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-slate-400 uppercase tracking-wide text-left">
-                  <th className="font-medium pb-2">Persona</th>
-                  <th className="font-medium pb-2 px-2">Pts {prev.label}</th>
-                  <th className="font-medium pb-2 px-2">Práctica</th>
-                  <th className="font-medium pb-2 px-2 text-right">Arrastre</th>
-                  <th className="font-medium pb-2 px-2">Campañas</th>
-                  <th className="font-medium pb-2 pl-2 text-right">Antigüedad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => {
-                  const f = est[u.id]
-                  return (
-                    <tr key={u.id} className="border-t border-slate-100">
-                      <td className="py-1.5 pr-2"><span className="block truncate max-w-[12rem]">{u.nombre}</span><CentroBadge centro={u.centro} /></td>
-                      <td className="px-2"><Input value={f.total} inputMode="decimal" onChange={(e) => cambia(u.id, 'total', e.target.value)} className="!w-20 !py-1" /></td>
-                      <td className="px-2"><input type="checkbox" checked={f.practica} onChange={(e) => cambia(u.id, 'practica', e.target.checked)} title="Ha disfrutado una práctica: no arrastra" /></td>
-                      <td className={`px-2 text-right tabular-nums ${f.tieneArr ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneArr ? 'ya está' : fmtPts(arrastre(aNum(f.total), f.practica))}</td>
-                      <td className="px-2"><Input value={f.campanas} inputMode="numeric" onChange={(e) => cambia(u.id, 'campanas', e.target.value)} className="!w-16 !py-1" /></td>
-                      <td className={`pl-2 text-right tabular-nums ${f.tieneAnt ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneAnt ? 'ya está' : fmtPts(Math.max(0, Math.round(aNum(f.campanas))) * PUNTOS_ANTIGUEDAD)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-          <Btn onClick={aplicar} disabled={busy || !est}><Save className="w-4 h-4" />{busy ? 'Aplicando…' : 'Aplicar'}</Btn>
         </div>
       </div>
     </Modal>
