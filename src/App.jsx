@@ -1866,7 +1866,7 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
 // Se puede repetir (p. ej. cuando se registre alguien con puntos importados): salta lo que ya está aplicado.
 function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
   const prev = campana(camp.ini - 1)
-  const [est, setEst] = useState(null) // { [id]: { total, practica, campanas, tieneArr, tieneAnt } }
+  const [est, setEst] = useState(null) // { [id]: { total, campanas, tieneArr, tieneAnt } }
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -1892,7 +1892,6 @@ function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
           const act = actuales.filter((a) => a.usuario_id === u.id)
           out[u.id] = {
             total: String(Math.round(total * 100) / 100),
-            practica: false,
             campanas: String(estuvo ? (antig ? Number(antig.cantidad) || 0 : 0) + 1 : 0),
             tieneArr: act.some((a) => a.concepto === 'arrastre'),
             tieneAnt: act.some((a) => a.concepto === 'antiguedad'),
@@ -1912,11 +1911,11 @@ function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
     for (const u of users) {
       const f = est[u.id]
       const total = aNum(f.total)
-      const arr = arrastre(total, f.practica)
-      if (!f.tieneArr && (arr > 0 || (f.practica && total >= 10))) {
+      const arr = arrastre(total)
+      if (!f.tieneArr && arr > 0) {
         rows.push({
           usuario_id: u.id, fecha: camp.desde, categoria: 'INI', concepto: 'arrastre', descripcion: 'Arrastre de la campaña anterior', puntos: arr,
-          motivo: f.practica ? `Disfrutó práctica: no se arrastra (eran ${fmtPts(total)} pts de ${prev.label})` : `Mitad de ${fmtPts(total)} pts de ${prev.label}`,
+          motivo: `Mitad de ${fmtPts(total)} pts de ${prev.label}`,
         })
       }
       const cam = Math.max(0, Math.round(aNum(f.campanas)))
@@ -1944,7 +1943,7 @@ function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
       </ModalHead>
       <div className="px-6 py-5 space-y-4">
         <p className="text-sm text-slate-600">
-          <strong>Arrastre:</strong> la mitad de los puntos de {prev.label}, salvo que fueran menos de 10 o que la persona haya disfrutado una práctica.
+          <strong>Arrastre:</strong> la mitad de los puntos de {prev.label} (nada si eran menos de 10).
           {' '}<strong>Antigüedad:</strong> {PUNTOS_ANTIGUEDAD} puntos por campaña completada. Revisa y corrige lo que haga falta antes de aplicar.
         </p>
         {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
@@ -1955,7 +1954,6 @@ function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
                 <tr className="text-xs text-slate-400 uppercase tracking-wide text-left">
                   <th className="font-medium pb-2">Persona</th>
                   <th className="font-medium pb-2 px-2">Pts {prev.label}</th>
-                  <th className="font-medium pb-2 px-2">Práctica</th>
                   <th className="font-medium pb-2 px-2 text-right">Arrastre</th>
                   <th className="font-medium pb-2 px-2">Campañas</th>
                   <th className="font-medium pb-2 pl-2 text-right">Antigüedad</th>
@@ -1968,8 +1966,7 @@ function CampanaModal({ users, camp, hoy, onClose, onSaved }) {
                     <tr key={u.id} className="border-t border-slate-100">
                       <td className="py-1.5 pr-2"><span className="block truncate max-w-[12rem]">{u.nombre}</span><CentroBadge centro={u.centro} /></td>
                       <td className="px-2"><Input value={f.total} inputMode="decimal" onChange={(e) => cambia(u.id, 'total', e.target.value)} className="!w-20 !py-1" /></td>
-                      <td className="px-2"><input type="checkbox" checked={f.practica} onChange={(e) => cambia(u.id, 'practica', e.target.checked)} title="Ha disfrutado una práctica: no arrastra" /></td>
-                      <td className={`px-2 text-right tabular-nums ${f.tieneArr ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneArr ? 'ya está' : fmtPts(arrastre(aNum(f.total), f.practica))}</td>
+                      <td className={`px-2 text-right tabular-nums ${f.tieneArr ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneArr ? 'ya está' : fmtPts(arrastre(aNum(f.total)))}</td>
                       <td className="px-2"><Input value={f.campanas} inputMode="numeric" onChange={(e) => cambia(u.id, 'campanas', e.target.value)} className="!w-16 !py-1" /></td>
                       <td className={`pl-2 text-right tabular-nums ${f.tieneAnt ? 'text-slate-300' : 'font-semibold'}`}>{f.tieneAnt ? 'ya está' : fmtPts(Math.max(0, Math.round(aNum(f.campanas))) * PUNTOS_ANTIGUEDAD)}</td>
                     </tr>

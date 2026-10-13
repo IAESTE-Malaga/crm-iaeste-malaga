@@ -211,9 +211,9 @@ export function campanas(hoyIso) {
 export const dentroDe = (camp, iso) => iso >= camp.desde && iso <= camp.hasta
 
 // ---------- Arrastre a la campaña siguiente ----------
-// Se arrastra la mitad de los puntos, salvo que fueran menos de 10 o que la persona haya disfrutado una práctica.
-export const arrastre = (totalAnterior, disfrutoPractica) =>
-  disfrutoPractica || (Number(totalAnterior) || 0) < 10 ? 0 : Math.round(Number(totalAnterior) * 50) / 100
+// Se arrastra la mitad de los puntos (también a quien ha hecho una práctica), salvo que fueran menos de 10.
+export const arrastre = (totalAnterior) =>
+  (Number(totalAnterior) || 0) < 10 ? 0 : Math.round(Number(totalAnterior) * 50) / 100
 
 // Antigüedad: 5 puntos por campaña completada
 export const PUNTOS_ANTIGUEDAD = 5
