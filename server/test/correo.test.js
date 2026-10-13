@@ -171,6 +171,25 @@ test('API: un miembro envía desde su empresa, se guarda y llega a Mailpit con c
   assert.equal(d2.in_reply_to, messageId)
 })
 
+test('API: el primer correo pasa la empresa a «mail enviado» (y deja rastro en el historial); en otros estados no la toca', async () => {
+  const { token } = await login('marta@iaeste.test', 'Miembro1234')
+  const envio = () => post('/api/emails/send', token, { empresa_id: empresaMarta, para: 'jmolina@redesdelsur.example', asunto: `Estado ${Date.now()}`, cuerpo: 'hola' })
+  const estado = async () => (await sb.from('empresas').select('estado').eq('id', empresaMarta).single()).data.estado
+
+  await sb.from('empresas').update({ estado: 'sin_contactar' }).eq('id', empresaMarta)
+  const r = await envio()
+  assert.equal(r.status, 201)
+  assert.equal((await r.json()).estado, 'mail_enviado')
+  assert.equal(await estado(), 'mail_enviado')
+  const { data: h } = await sb.from('historial').select('usuario_nombre, estado_nuevo').eq('empresa_id', empresaMarta).eq('estado_nuevo', 'mail_enviado').order('creado', { ascending: false }).limit(1)
+  assert.equal(h[0].usuario_nombre, 'Marta Sanz') // el trigger toma el nombre de actualizado_por
+
+  await sb.from('empresas').update({ estado: 'interesados' }).eq('id', empresaMarta)
+  const r2 = await envio()
+  assert.equal((await r2.json()).estado, undefined)
+  assert.equal(await estado(), 'interesados')
+})
+
 test('API: un miembro no puede enviar desde empresas ajenas ni a destinatarios que no son de la empresa', async () => {
   const { token } = await login('marta@iaeste.test', 'Miembro1234')
   let r = await post('/api/emails/send', token, { empresa_id: empresaPablo, para: 'rhernandez@x.example', asunto: 'a', cuerpo: 'b' })

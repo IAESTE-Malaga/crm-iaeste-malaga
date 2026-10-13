@@ -36,6 +36,18 @@ export function validarEnvio({ para, asunto, cuerpo }) {
   return { to, subject, text }
 }
 
+// Primer contacto por correo: una empresa «sin contactar» o «no contesta» pasa a «mail enviado»
+// (el historial lo anota el trigger; el nombre sale de actualizado_por porque aquí no hay sesión de base de datos).
+// Un fallo aquí no debe hacer fallar el envío, que ya ha salido: se devuelve undefined y se registra.
+async function marcarMailEnviado(sb, usuario, empresa) {
+  if (!['sin_contactar', 'no_contesta'].includes(empresa.estado)) return undefined
+  const { error } = await sb.from('empresas')
+    .update({ estado: 'mail_enviado', notas: 'Mail enviado', actualizado_por: usuario.nombre })
+    .eq('id', empresa.id)
+  if (error) { console.error('[smtp] enviado, pero no se pudo cambiar el estado:', error.message); return undefined }
+  return 'mail_enviado'
+}
+
 // Envía un correo en nombre de `usuario` a una empresa y lo guarda en la base de datos.
 // Seguridad:
 //  - Solo se puede escribir a direcciones que ya pertenecen a esa empresa (su ficha o contactos suyos):
@@ -44,7 +56,7 @@ export function validarEnvio({ para, asunto, cuerpo }) {
 export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerpo, responderA }) {
   const { to, subject, text } = validarEnvio({ para, asunto, cuerpo })
 
-  const { data: empresa, error: eEmp } = await sb.from('empresas').select('id, nombre, email, responsable').eq('id', empresaId).maybeSingle()
+  const { data: empresa, error: eEmp } = await sb.from('empresas').select('id, nombre, email, responsable, estado').eq('id', empresaId).maybeSingle()
   if (eEmp) throw eEmp
   if (!empresa) throw new ErrorUsuario('La empresa no existe.', 404)
   if (usuario.rol !== 'admin' && empresa.responsable !== usuario.id) {
@@ -113,7 +125,7 @@ export async function enviarCorreo(sb, usuario, { empresaId, para, asunto, cuerp
       enviado_por: usuario.id,
     }).select('id').single()
     if (error) throw error
-    return { id: data.id, messageId }
+    return { id: data.id, messageId, estado: await marcarMailEnviado(sb, usuario, empresa) }
   } catch (e) {
     console.error('[smtp] enviado pero NO guardado:', messageId, e.message)
     throw new ErrorUsuario('El correo se ha enviado, pero no se ha podido guardar en el CRM. No lo vuelvas a enviar; avisa a un admin.', 500)

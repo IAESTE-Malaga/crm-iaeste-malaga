@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle } from 'lucide-react'
+import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText } from 'lucide-react'
 import { supabase } from './supabase'
+import { asuntoPlantilla, plantillaTexto } from './plantilla'
 
 // URL del servicio de correo (server/). En desarrollo, el puerto por defecto; en producción hay que definirla.
 const API = (import.meta.env.VITE_EMAIL_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '')).replace(/\/$/, '')
@@ -27,7 +28,7 @@ const conRe = (a) => (/^re:/i.test(a) ? a : `Re: ${a}`)
 
 // Hilo de correos de una empresa + caja para redactar y enviar.
 // Los mensajes entrantes se pintan SIEMPRE como texto plano (nunca como HTML): son de terceros.
-export default function EmailThread({ empresa }) {
+export default function EmailThread({ empresa, yo, onEnviado }) {
   const [correos, setCorreos] = useState(null)   // null = cargando
   const [err, setErr] = useState('')
   const [para, setPara] = useState('')
@@ -82,6 +83,14 @@ export default function EmailThread({ empresa }) {
   // Al abrir o llegar mensajes nuevos, bajar al último
   useEffect(() => { fin.current?.scrollIntoView({ block: 'nearest' }) }, [correos?.length])
 
+  // Rellena asunto y mensaje con la plantilla de contacto (texto plano; se puede editar antes de enviar)
+  const usarPlantilla = () => {
+    if (cuerpo.trim() && !confirm('Se sustituirá lo que has escrito por la plantilla. ¿Continuar?')) return
+    setAsunto(asuntoPlantilla(empresa))
+    setCuerpo(plantillaTexto(empresa, yo))
+    setTocado(true)
+  }
+
   const enviar = async () => {
     setErr(''); setAviso('')
     if (!para) { setErr('No hay ningún email al que escribir. Añádelo en la ficha de la empresa.'); return }
@@ -97,7 +106,8 @@ export default function EmailThread({ empresa }) {
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(j.error || `Error ${r.status}`)
       setCuerpo(''); setTocado(false)
-      setAviso('Enviado ✓')
+      setAviso(j.estado ? 'Enviado ✓ · empresa marcada como «Mail enviado»' : 'Enviado ✓')
+      if (j.estado) onEnviado?.(j.estado)
       await cargar()
     } catch (e) {
       setErr(e instanceof TypeError ? 'No se puede conectar con el servicio de correo.' : e.message)
