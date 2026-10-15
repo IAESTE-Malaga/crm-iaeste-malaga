@@ -45,7 +45,7 @@ npm run dev             # http://localhost:5173
 | pablo@iaeste.test | Miembro1234 | miembro |
 | irene@iaeste.test | Miembro1234 | miembro |
 
-Los datos de prueba (38 empresas ficticias con historial, prioritarias y bote común sin asignar) se generan con fechas relativas a hoy, así que la agenda, los avisos de seguimiento y la quincena siempre tienen algo que mostrar.
+Los datos de prueba (38 empresas ficticias con historial, prioritarias y bote común sin asignar) se generan con fechas relativas a hoy, así que la agenda, los avisos de seguimiento siempre tienen algo que mostrar.
 
 Si te registras con un email nuevo, el correo de confirmación llega a **Mailpit**, no a una bandeja real.
 

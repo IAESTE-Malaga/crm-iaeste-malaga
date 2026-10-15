@@ -109,8 +109,6 @@ export default function Guia({ isAdmin }) {
         <Lista>
           <li><B>Próximo contacto:</B> en la ficha elige una fecha (o los atajos +1 sem, +2 sem, +1 mes). Ese día la empresa aparece en <B>Para hoy</B>; si pasa la fecha sin tocarla, pasa a <B>Atrasadas</B>.</li>
           <li><B>Realizar seguimiento:</B> empresas en seguimiento a las que llevas 7 días sin escribir una nota ni cambiar el estado, y sin un próximo contacto programado a futuro.</li>
-          <li><B>Seguimiento quincenal:</B> cada 14 días el equipo repasa todas las empresas en seguimiento (no lo cogen, mail enviado, muy interesados). Para darla por revisada hay que
-            volver a tocar cada una (<B>nota o cambio de estado</B>) dentro de la quincena. El aviso azul de la pantalla de Empresas te dice cuáles te faltan y hasta cuándo.</li>
         </Lista>
         <p>Pulsa cualquiera de los avisos para filtrar la lista y volver a verla entera con «Ver todas».</p>
       </Seccion>
@@ -151,7 +149,7 @@ export default function Guia({ isAdmin }) {
           Tu puntuación se compone de dos partes:
         </p>
         <Lista>
-          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): cada empresa puntúa según su estado actual (contactada 1, cerrada 3, máximo 3 por empresa) y cada quincena de seguimiento cumplida da 10 puntos.</li>
+          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): cada empresa puntúa según su estado actual (contactada 1, cerrada 3, máximo 3 por empresa).</li>
           <li><B>Puntos que anota un admin</B> por lo que haces en el comité local y en los grupos de trabajo (reuniones, stands, despacho, redes sociales, outgoing…), con la rúbrica de la campaña. Los ves en <B>Mi desglose</B> con la fecha y el motivo de cada uno.</li>
         </Lista>
         <p>
@@ -169,7 +167,7 @@ export default function Guia({ isAdmin }) {
             <li><B><History className="inline w-3.5 h-3.5 -mt-0.5" /> Seguimiento:</B> últimos cambios y notas de todo el equipo, filtrables por persona.</li>
             <li><B><Trophy className="inline w-3.5 h-3.5 -mt-0.5" /> Puntuación:</B> con <B>Dar puntos</B> eliges una o varias personas, la categoría y el concepto de la rúbrica (los puntos se rellenan solos y los puedes ajustar), la fecha y un motivo que verá la persona. Pulsa una persona de la clasificación para ver, editar o borrar sus apuntes.
               Antigüedad y arrastre se anotan al empezar la campaña con <B>Dar puntos</B> (categoría «Inicio de campaña»). Los apuntes importados de gente que aún no tiene cuenta se les asignan solos al registrarse con el mismo nombre.
-              Los puntos por empresas del CRM (contactada 1, cerrada 3, quincena cumplida) se suman solos como GT Empresas; en <B>Equipo</B> sigue la tabla detallada.</li>
+              Los puntos por empresas del CRM (contactada 1, cerrada 3) se suman solos como GT Empresas; en <B>Equipo</B> sigue la tabla detallada.</li>
             <li><B><Star className="inline w-3.5 h-3.5 -mt-0.5" /> Prioritarias:</B> al conseguir una práctica, registra año y nº de prácticas desde la ficha; la empresa pasa sola al apartado «Prioritarias».</li>
             <li><B>Asignación rápida:</B> filtra por «Sin asignar» en Empresas, marca las que quieras y asígnalas de golpe. También puedes exportar la lista a Excel.</li>
             <li><B>Plantillas:</B> puedes editar y borrar las de cualquiera, incluida la de serie.</li>
