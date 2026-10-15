@@ -723,7 +723,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
         }
         mensaje = mensaje || `Prácticas ${anio} registradas ✓ · ya es empresa prioritaria`
       }
-      onSaved(mensaje)
+      onSaved(mensaje, nueva ? empresaId : undefined)
     } catch (e) {
       // La base de datos también impide CIF repetidos (por si la empresa no se ve desde esta cuenta)
       setErr(e.code === '23505' && /cif/i.test(e.message || '')
@@ -2522,6 +2522,7 @@ export default function App() {
       setCompanies(emps.map((c) => ({ ...c, practicas: porEmpresa[c.id] || [] })))
       setMe(perfiles.find((p) => p.id === session.user.id) || null)
       setErrorCarga('')
+      return emps
     } catch (e) {
       setErrorCarga(e.message || 'No se ha podido conectar con la base de datos.')
     }
@@ -2992,12 +2993,19 @@ export default function App() {
 
       {modal && (
         <EmpresaModal
+          key={modal === 'nueva' ? 'nueva' : modal.id}
           empresa={modal === 'nueva' ? null : modal}
           users={users}
           isAdmin={isAdmin}
           me={me}
           todas={companies}
-          onSaved={(m) => { setModal(null); cargar(); flash(m || 'Guardado ✓', m ? 6000 : 2500) }}
+          onSaved={async (m, idNueva) => {
+            if (!idNueva) { setModal(null); cargar(); flash(m || 'Guardado ✓', m ? 6000 : 2500); return }
+            // Empresa recién creada: se abre su ficha completa (con el hilo de correos) para escribirles
+            const lista = await cargar()
+            setModal(lista?.find((c) => c.id === idNueva) || null)
+            flash('Empresa creada ✓ Ya puedes enviarles un correo', 5000)
+          }}
           onDeleted={() => { setModal(null); cargar(); flash('Empresa eliminada') }}
           onRefresh={cargar}
           onClose={() => setModal(null)}

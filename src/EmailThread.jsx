@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText, Paperclip, X } from 'lucide-react'
+import { Mail, Send, ArrowDownLeft, ArrowUpRight, RefreshCw, AlertCircle, FileText, Paperclip, X, ChevronUp, ChevronDown, PenLine } from 'lucide-react'
 import { supabase } from './supabase'
 import { aplicarVariables } from './plantillas'
 import { htmlVacio } from './html'
@@ -32,6 +32,12 @@ const conRe = (a) => (/^re:/i.test(a) ? a : `Re: ${a}`)
 // Hilo de correos de una empresa + caja para redactar y enviar.
 // Los mensajes entrantes se pintan SIEMPRE como texto plano (nunca como HTML): son de terceros.
 export default function EmailThread({ empresa, yo, onEnviado }) {
+  // El borrador se puede plegar para leer el hilo entero; sigue montado, así no se pierde lo escrito
+  const [abierto, setAbierto] = useState(() => { try { return localStorage.getItem('crm.borradorAbierto') !== '0' } catch { return true } })
+  const alternar = () => setAbierto((a) => {
+    try { localStorage.setItem('crm.borradorAbierto', a ? '0' : '1') } catch { /* sin almacenamiento */ }
+    return !a
+  })
   const [correos, setCorreos] = useState(null)   // null = cargando
   const [err, setErr] = useState('')
   const [para, setPara] = useState('')
@@ -192,7 +198,7 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
       ) : correos.length === 0 ? (
         <p className="text-xs text-slate-400 mb-5 lg:flex-1">Todavía no hay correos con esta empresa.</p>
       ) : (
-        <ol className="space-y-2.5 max-h-[40vh] lg:max-h-none lg:flex-1 lg:min-h-[8rem] overflow-y-auto pr-1 mb-5">
+        <ol className="space-y-2.5 max-h-[60vh] lg:max-h-none lg:flex-1 lg:min-h-[8rem] overflow-y-auto pr-1 mb-3">
           {correos.map((c) => {
             const salida = c.direccion === 'saliente'
             return (
@@ -224,8 +230,16 @@ export default function EmailThread({ empresa, yo, onEnviado }) {
         </ol>
       )}
 
+      <button onClick={alternar} aria-expanded={abierto}
+        className="shrink-0 flex items-center gap-2 w-full px-4 py-2 mb-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:bg-slate-50 transition">
+        <PenLine className="w-3.5 h-3.5 text-slate-400" />
+        <span className="flex-1 text-left">{abierto ? 'Ocultar borrador' : 'Redactar correo'}</span>
+        {!abierto && !htmlVacio(cuerpo) && <span className="text-[11px] font-medium text-brand-700">Borrador sin enviar</span>}
+        {abierto ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
+      </button>
+
       {/* Redactar: tarjeta con destinatario y asunto en filas propias y un cuadro de mensaje grande */}
-      <div className="shrink-0 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/10 transition">
+      <div className={`${abierto ? '' : 'hidden'} shrink-0 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/10 transition`}>
         <div className="flex items-center gap-3 px-4 py-2 border-b border-slate-100">
           <span className="w-14 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Para</span>
           {opciones.length > 1 || (opciones.length === 1 && opciones[0] !== para) ? (
