@@ -953,6 +953,9 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
           {f.actualizado && !nueva && (
             <p className="text-xs text-slate-400">Última actualización: {fecha(f.actualizado)}{f.actualizado_por ? ` · ${f.actualizado_por}` : ''}</p>
           )}
+          <div className="flex justify-end pt-1">
+            <Btn onClick={() => guardar()} disabled={busy || !!cifDup}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
+          </div>
         </div>
         {!nueva && (
           <div className="p-6 border-t lg:border-t-0 lg:border-l border-slate-100 bg-slate-50/60 lg:overflow-y-auto lg:h-full">
@@ -971,7 +974,6 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
           <p className="flex-1 min-w-0 text-xs text-rose-600 flex items-start gap-1.5">
             {err && <><AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{err}</span></>}
           </p>
-          <Btn onClick={() => guardar()} disabled={busy || !!cifDup}><Save className="w-4 h-4" />{busy ? 'Guardando…' : 'Guardar'}</Btn>
         </div>
     </Modal>
   )
