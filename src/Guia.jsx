@@ -83,6 +83,7 @@ export default function Guia({ isAdmin }) {
         </p>
         <p><B>Qué puedes cambiar en una ficha:</B> en las empresas que llevas puedes editar persona de contacto, teléfono, email, dirección, CIF, estado, notas y próximo contacto.
           El nombre, el sector y el responsable solo los cambia un admin. Las empresas de otros compañeros las puedes ver, pero no editar.</p>
+        <p><B>Reclamar empresas:</B> las que aparecen como «Sin asignar» no tienen responsable. Ábrela y pulsa «Reclamar»: pasa a ser tuya y ya puedes editarla.</p>
         <p>
           <B>Nueva empresa:</B> con el botón «Nueva empresa» arriba a la derecha. Queda asignada a ti. Si el CIF ya existe, el CRM la rechaza para evitar duplicados:
           búscala y trabaja con la que ya está.

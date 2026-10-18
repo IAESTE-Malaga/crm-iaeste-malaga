@@ -12,7 +12,7 @@ import {
 } from './puntuaciones'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
-  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy,
+  Shield, User, Save, Mail, Phone, AlertCircle, KeyRound, Download, CalendarClock, Send, FileSpreadsheet, Trophy, Globe,
   History, UserPlus, UserMinus, Inbox, MapPin, Star, AlertTriangle, Users, FileText, BookOpen, Paperclip,
 } from 'lucide-react'
 
@@ -571,7 +571,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
   const [recargaHist, setRecargaHist] = useState(0)
   const nueva = !empresa
   const [fForm, setF] = useState(
-    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', direccion: '', responsable: null, estado: 'sin_contactar', notas: '', proximo_contacto: null }
+    empresa || { nombre: '', cif: '', sector: '', contacto: '', email: '', telefono: '', web: '', direccion: '', responsable: null, estado: 'sin_contactar', notas: '', proximo_contacto: null }
   )
   const f = fForm
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }))
@@ -627,7 +627,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
       if (nueva) {
         const { data: creada, error } = await supabase.from('empresas').insert({
           nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email,
-          telefono: f.telefono, direccion: f.direccion,
+          telefono: f.telefono, web: f.web, direccion: f.direccion,
           responsable: isAdmin ? (f.responsable || null) : me.id,
           estado: f.estado,
           notas: nota || null, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre,
@@ -636,8 +636,8 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
         empresaId = creada.id
       } else {
         const patch = isAdmin
-          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
-          : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, direccion: f.direccion, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          ? { nombre: f.nombre.trim(), cif: f.cif, sector: f.sector, contacto: f.contacto, email: f.email, telefono: f.telefono, web: f.web, direccion: f.direccion, responsable: f.responsable || null, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
+          : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, web: f.web, direccion: f.direccion, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
       }
@@ -709,6 +709,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
         <div><Label>Teléfono</Label><Input type="tel" inputMode="tel" autoComplete="off" value={f.telefono || ''} onChange={(e) => set('telefono', e.target.value)} placeholder="+34 600 000 000" /></div>
       </div>
       <div><Label>Email</Label><Input type="email" inputMode="email" autoCapitalize="none" value={f.email || ''} onChange={(e) => set('email', e.target.value)} /></div>
+      <div><Label>Web</Label><Input type="url" inputMode="url" autoCapitalize="none" value={f.web || ''} onChange={(e) => set('web', e.target.value)} placeholder="https://" /></div>
       <div><Label>Dirección</Label><Input value={f.direccion || ''} onChange={(e) => set('direccion', e.target.value)} placeholder="Calle, número, ciudad" /></div>
       {f.direccion && (
         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}`} target="_blank" rel="noopener noreferrer"
@@ -718,21 +719,37 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
     </>
   )
 
+  // Reclamar una empresa sin asignar: pasa a ser responsable de quien la pide
+  const reclamar = async () => {
+    setBusy(true); setErr('')
+    const { error } = await supabase.rpc('reclamar_empresa', { p_id: empresa.id })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    onSaved(`«${empresa.nombre}» es tuya ✓`)
+  }
+
   // Un miembro puede ver todas las empresas, pero solo editar las suyas
   if (!isAdmin && !nueva && empresa.responsable !== me.id) {
     const dato = (Icono, v, href) => v && (
       <p className="flex items-start gap-2"><Icono className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
         {href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-all">{v}</a> : <span className="break-words">{v}</span>}</p>
     )
+    const webHref = f.web ? (/^https?:\/\//i.test(f.web) ? f.web : `https://${f.web}`) : null
     return (
       <Modal ancho="max-w-2xl" onClose={onClose}>
           <ModalHead onClose={onClose}>{f.nombre}</ModalHead>
           <div className="p-6 space-y-4 text-sm text-slate-700">
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
               <span className="flex items-center gap-2"><User className="w-4 h-4 text-slate-400" />
                 {empresa.responsable ? <>La lleva <strong>{nombreResp(empresa.responsable) || 'otra persona'}</strong></> : 'Sin asignar'}</span>
-              <Badge estadoId={f.estado} />
+              <div className="flex items-center gap-3">
+                <Badge estadoId={f.estado} />
+                {!empresa.responsable && (
+                  <Btn onClick={reclamar} disabled={busy}><UserPlus className="w-4 h-4" />{busy ? 'Reclamando…' : 'Reclamar'}</Btn>
+                )}
+              </div>
             </div>
+            {err && <p className="flex items-start gap-2 text-rose-600"><AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /><span>{err}</span></p>}
             {empresa.historica && (
               <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
                 <Star className="w-4 h-4 mt-0.5 shrink-0 fill-amber-500 text-amber-500" />
@@ -745,10 +762,13 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
               {dato(User, f.contacto)}
               {dato(Phone, f.telefono, f.telefono ? `tel:${String(f.telefono).replace(/\s/g, '')}` : null)}
               {dato(Mail, f.email)}
+              {dato(Globe, f.web, webHref)}
               {dato(MapPin, f.direccion, f.direccion ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(f.direccion)}` : null)}
             </div>
             <p className="text-xs text-slate-500 border-t border-slate-100 pt-3">
-              Solo puede editarla {empresa.responsable ? 'su responsable' : 'quien la tenga asignada'} o un admin. Si quieres llevarla tú, pídeselo a un admin.
+              {empresa.responsable
+                ? <>Solo puede editarla su responsable o un admin. Si quieres llevarla tú, pídeselo a un admin.</>
+                : <>Sin responsable: si la reclamas, pasa a ser tuya y podrás editarla.</>}
             </p>
           </div>
       </Modal>
