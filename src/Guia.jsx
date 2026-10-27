@@ -13,6 +13,7 @@ const ESTADOS_GUIA = [
   ['Práctica conseguida', 'bg-emerald-50 text-emerald-700 border-emerald-200', 'Han firmado una práctica con IAESTE.'],
   ['No quieren', 'bg-rose-50 text-rose-700 border-rose-200', 'Han dicho que no están interesados.'],
   ['Ya no existe', 'bg-stone-100 text-stone-500 border-stone-300', 'La empresa ha cerrado o no se localiza.'],
+  ['Lista negra', 'bg-zinc-800 text-white border-zinc-900', 'No hay que volver a contactarla. Desaparece de todos los apartados y solo se ve en «Lista negra».'],
 ]
 
 const Seccion = ({ id, icono: Icono, titulo, children }) => (
@@ -76,6 +77,7 @@ export default function Guia({ isAdmin }) {
           <li><B>Seguimiento activo:</B> conversaciones abiertas (no lo cogen, mail enviado, para más adelante, muy interesados).</li>
           <li><B>Cerradas:</B> práctica conseguida, no quieren, ya no existe u otra comunidad.</li>
           <li><B>Todas:</B> todas las empresas del CRM, también las de tus compañeros, en solo lectura.</li>
+          <li><B>Lista negra:</B> empresas que no hay que volver a contactar. No salen en ningún otro apartado ni en los recordatorios.</li>
         </Lista>
         <p>
           En los demás apartados solo ves <B>tus</B> empresas. Usa el buscador (nombre, CIF, contacto, sector…) y los filtros por estado para encontrar una.

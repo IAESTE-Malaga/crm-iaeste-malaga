@@ -28,6 +28,7 @@ const ESTADOS = [
   { id: 'beca', label: 'Práctica conseguida', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
   { id: 'no_existe', label: 'Ya no existe', color: 'bg-stone-100 text-stone-500 border-stone-300 line-through', dot: 'bg-stone-400' },
   { id: 'rechazada', label: 'No quieren', color: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' },
+  { id: 'lista_negra', label: 'Lista negra', color: 'bg-zinc-800 text-white border-zinc-900', dot: 'bg-zinc-900' },
 ]
 // Apartados de la lista de empresas: cada estado pertenece a uno
 const GRUPOS = [
@@ -36,10 +37,14 @@ const GRUPOS = [
   { id: 'cerradas', label: 'Cerradas', estados: ['beca', 'rechazada', 'no_existe', 'otra_provincia'] },
   { id: 'historicas', label: 'Prioritarias', estados: null, historicas: true, soloAdmin: true },
   { id: 'todas', label: 'Todas', estados: null },
+  { id: 'lista_negra', label: 'Lista negra', estados: ['lista_negra'] },
 ]
+// Las empresas en lista negra solo aparecen en su apartado (ni en «Todas» ni en las prioritarias)
+const enListaNegra = (c) => c.estado === 'lista_negra'
 // Para un miembro, todos los apartados salvo «Todas» muestran solo sus empresas
 const enGrupo = (g, c, meId, admin = true) =>
   (!admin && g.id !== 'todas' && c.responsable !== meId) ? false
+    : enListaNegra(c) !== (g.id === 'lista_negra') ? false
     : g.historicas ? !!c.historica : (!g.estados || g.estados.includes(c.estado))
 // Normaliza un CIF para comparar: sin espacios, guiones ni puntos y en mayúsculas
 const cifNorm = (cif) => String(cif || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
@@ -77,6 +82,7 @@ const PUNTOS_ESTADO = {
   sin_contactar: 0,
   no_contesta: 1, mail_enviado: 1, interesados: 1, segundo_plazo: 1,   // ya contactada
   mas_adelante: 3, otra_provincia: 3, no_existe: 3, rechazada: 3, beca: 3, // cerrada (3 en total)
+  lista_negra: 0,
 }
 // Un seguimiento con cambio de estado deja dos filas en el historial (estado + nota) con la misma
 // hora, persona y empresa: así se emparejan en la ficha de la empresa.
@@ -2494,7 +2500,7 @@ export default function App() {
   const hoy = HOY()
   const misSinContactar = companies.filter((c) => c.responsable === me.id && c.estado === 'sin_contactar').length
   // Recordatorios: un miembro solo cuenta los de sus empresas
-  const deAgenda = isAdmin ? companies : companies.filter((c) => c.responsable === me.id)
+  const deAgenda = companies.filter((c) => !enListaNegra(c) && (isAdmin || c.responsable === me.id))
   const nAtrasadas = deAgenda.filter((c) => c.proximo_contacto && c.proximo_contacto < hoy).length
   const nHoy = deAgenda.filter((c) => c.proximo_contacto === hoy).length
   // Empresas en seguimiento sin nota ni cambio de estado en SIN_MOVER.dias (y sin próximo contacto a futuro)
@@ -2508,7 +2514,7 @@ export default function App() {
   const modoAsignar = isAdmin && filtroPersona === '__sin'
   const visibles = companies
     .filter((c) => {
-      if (agenda && !isAdmin && c.responsable !== me.id) return false
+      if (agenda && ((!isAdmin && c.responsable !== me.id) || enListaNegra(c))) return false
       if (agenda === 'hoy') return c.proximo_contacto && c.proximo_contacto <= hoy
       if (agenda === 'atrasadas') return c.proximo_contacto && c.proximo_contacto < hoy
       if (agenda === 'seguimiento') return sinMover(c)
