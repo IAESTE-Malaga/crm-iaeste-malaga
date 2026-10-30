@@ -76,7 +76,7 @@ const ACCIONES = {
 const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
 
 // Baremo de la Guía de Puntuaciones (GT Empresas): se puntúan las LLAMADAS, no el estado de la empresa,
-// y los puntos son para quien las hizo (quien figura en el historial). No hay tope por empresa.
+// y los puntos son para el responsable de la empresa (quien la tiene asignada), no para quien tocó el estado. No hay tope por empresa.
 //  - positiva: la empresa atiende, no da un «no» rotundo y se le envía el correo (2)
 //  - negativa: la empresa atiende y dice que no, o no encaja (1)
 //  - seguimiento: cada vez que se vuelve a llamar a una empresa que ya se había contactado (1,5)
@@ -1160,13 +1160,13 @@ function calcularPuntos({ todo, companies, users, desde, hasta }) {
       if (!tipo) continue
       contactada = true
       const cuando = new Date(c.creado)
-      if (!c.usuario_id || cuando < ini || cuando >= fin) continue
-      const r = de(c.usuario_id)
+      const emp = empresaDe.get(empresaId)
+      if (!emp.responsable || cuando < ini || cuando >= fin) continue
+      const r = de(emp.responsable)
       const pts = LLAMADAS[tipo].pts
       r.puntos += pts
       if (tipo === 'positiva') r.positivas++; else if (tipo === 'negativa') r.negativas++; else r.seguimientos++
       if (c.estado === 'beca') r.becas++
-      const emp = empresaDe.get(empresaId)
       r.filas.push({ id: `e-${empresaId}-${c.creado}`, tipo, detalle: LLAMADAS[tipo].label, empresa_nombre: emp.nombre, estado: c.estado || emp.estado, creado: c.creado, puntos: pts })
     }
   }
@@ -1381,7 +1381,7 @@ function Actividad({ users, companies }) {
       )}
 
       <p className="text-xs text-slate-400 mt-4 leading-relaxed">
-        Baremo de la Guía de Puntuaciones (por llamada, para quien la hizo; sin tope por empresa): llamada positiva
+        Baremo de la Guía de Puntuaciones (por llamada, para el responsable de la empresa; sin tope por empresa): llamada positiva
         (la empresa atiende y se le envía el correo: mail enviado, muy interesados o práctica) 2 · llamada negativa
         (para más adelante, otra comunidad o no quieren) 1 · llamada de seguimiento a una empresa ya contactada (cualquier
         nota o cambio de estado posterior) 1,5 · no lo cogen, ya no existe y las altas 0. Las reuniones y las prácticas

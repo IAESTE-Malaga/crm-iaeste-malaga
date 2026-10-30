@@ -152,7 +152,7 @@ export default function Guia({ isAdmin }) {
           Tu puntuación se compone de dos partes:
         </p>
         <Lista>
-          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): se puntúan tus llamadas: positiva (la empresa atiende y se le envía el correo) 2, negativa 1 y cada seguimiento a una empresa ya contactada 1,5, sin tope por empresa. Las llamadas sin contactar no puntúan.</li>
+          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): se puntúan las llamadas a tus empresas (las que tienes asignadas): positiva (la empresa atiende y se le envía el correo) 2, negativa 1 y cada seguimiento a una empresa ya contactada 1,5, sin tope por empresa. Las llamadas sin contactar no puntúan.</li>
           <li><B>Puntos que anota un admin</B> por lo que haces en el comité local y en los grupos de trabajo (reuniones, stands, despacho, redes sociales, outgoing…), con la rúbrica de la campaña. Los ves en <B>Mi desglose</B> con la fecha y el motivo de cada uno.</li>
         </Lista>
         <p>
