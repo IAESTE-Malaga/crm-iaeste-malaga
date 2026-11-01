@@ -8,7 +8,7 @@ import { limpiarHtml, htmlATexto, htmlVacio } from './html'
 import { formatoTamano, validarArchivos, subirArchivo, borrarArchivos } from './adjuntos'
 import {
   CENTROS, NIVELES, MINIMO_GT_EMPRESAS, CATEGORIAS, ORDEN_CATEGORIAS, conceptoDe, conceptosDe, puntosSugeridos, rangoTexto,
-  num as fmtPts, campanas, dentroDe, PRIMERA_CAMPANA_CRM, clasificar, agruparPorCategoria,
+  num as fmtPts, campanas, campanaDe, dentroDe, PRIMERA_CAMPANA_CRM, clasificar, agruparPorCategoria,
 } from './puntuaciones'
 import {
   Building2, Plus, Search, LogOut, Pencil, Trash2, X, ChevronRight,
@@ -72,27 +72,24 @@ const ACCIONES = {
   agenda: { label: 'Agenda', color: 'bg-amber-50 text-amber-700 border-amber-200' },
   responsable: { label: 'Responsable', color: 'bg-violet-50 text-violet-700 border-violet-200' },
   datos: { label: 'Datos', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+  llamada: { label: 'Llamada', color: 'bg-sky-50 text-sky-700 border-sky-200' },
 }
 const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
 
-// Baremo de la Guía de Puntuaciones (GT Empresas): se puntúan las LLAMADAS, no el estado de la empresa,
-// y los puntos son para el responsable de la empresa (quien la tiene asignada), no para quien tocó el estado. No hay tope por empresa.
-//  - positiva: la empresa atiende, no da un «no» rotundo y se le envía el correo (2)
-//  - negativa: la empresa atiende y dice que no, o no encaja (1)
-//  - seguimiento: cada vez que se vuelve a llamar a una empresa que ya se había contactado (1,5)
-// Las llamadas sin contactar (no lo cogen, ya no existe…) no puntúan. Conseguir reunión o práctica se anota a mano.
-const LLAMADAS = {
-  positiva: { label: 'Llamada positiva + correo', pts: 2 },
-  negativa: { label: 'Llamada negativa', pts: 1 },
-  seguimiento: { label: 'Llamada de seguimiento', pts: 1.5 },
+// Baremo de puntos del club: cada empresa vale según su estado ACTUAL (máximo 3 por empresa).
+// No se acumula: si una empresa cambia de estado, sus puntos pasan a ser los del estado nuevo.
+// Los puntos son para la persona que tiene asignada la empresa. Las notas y las altas no puntúan.
+// «No lo cogen» no da puntos por estado: se paga por llamada (PUNTOS_LLAMADA).
+const PUNTOS_ESTADO = {
+  sin_contactar: 0, no_contesta: 0,
+  mail_enviado: 1, interesados: 1, segundo_plazo: 1,                      // ya contactada
+  mas_adelante: 3, otra_provincia: 3, no_existe: 3, rechazada: 3, beca: 3, // cerrada (3 en total)
+  lista_negra: 0,
 }
-// Resultado de la PRIMERA llamada en la que se contacta con la empresa, según el estado al que pasa
-const LLAMADA_POR_ESTADO = {
-  mail_enviado: 'positiva', interesados: 'positiva', segundo_plazo: 'positiva', beca: 'positiva',
-  mas_adelante: 'negativa', otra_provincia: 'negativa', rechazada: 'negativa',
-}
-// Estados a los que se pasa sin haber contactado: no puntúan ni como primera llamada ni como seguimiento
-const SIN_CONTACTO = ['sin_contactar', 'no_contesta', 'no_existe', 'lista_negra']
+// Además, cada llamada suma por separado (sí se acumula) para el responsable de la empresa, como lo de
+// estado. Cuentan las llamadas registradas en la ficha y cada vez que una empresa pasa a «No lo cogen».
+const PUNTOS_LLAMADA = { no_contesta: 0.5, seguimiento: 3 }
+const LLAMADA_LABEL = { no_contesta: 'No lo cogen', seguimiento: 'Seguimiento' }
 // Un seguimiento con cambio de estado deja dos filas en el historial (estado + nota) con la misma
 // hora, persona y empresa: así se emparejan en la ficha de la empresa.
 const claveSeg = (h) => `${h.empresa_id}|${h.usuario_id}|${h.creado}`
@@ -593,6 +590,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [nuevaNota, setNuevaNota] = useState('')
+  const [llamada, setLlamada] = useState('') // '' | 'no_contesta' | 'seguimiento' (ver PUNTOS_LLAMADA)
   const [abrirNota, setAbrirNota] = useState(nueva)
   const [prac, setPrac] = useState({ anio: new Date().getFullYear(), num: 1 })
   const [addPrac, setAddPrac] = useState(false)
@@ -655,6 +653,12 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
           : { cif: f.cif, contacto: f.contacto, email: f.email, telefono: f.telefono, web: f.web, direccion: f.direccion, estado: f.estado, ...conNota, proximo_contacto: f.proximo_contacto || null, actualizado_por: me.nombre }
         const { error } = await supabase.from('empresas').update(patch).eq('id', f.id)
         if (error) throw error
+      }
+      // Un «no lo cogen» que además pasa la empresa a ese estado ya cuenta por el cambio de estado: no se registra dos veces
+      const pasaANoContesta = f.estado === 'no_contesta' && (nueva || empresa.estado !== 'no_contesta')
+      if (llamada && !(llamada === 'no_contesta' && pasaANoContesta)) {
+        const { error } = await supabase.rpc('registrar_llamada', { p_empresa: empresaId, p_tipo: llamada })
+        if (error) throw new Error(`La empresa se ha guardado, pero no se ha podido registrar la llamada: ${error.message}`)
       }
       if (registrar) {
         const { error } = await supabase.from('practicas').insert({
@@ -948,6 +952,15 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
                   }`}
                 />
                 <p className="text-[11px] text-slate-400 text-right">{nuevaNota.length}/500</p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span className="text-xs text-slate-500 mr-1">¿Has llamado?</span>
+                  {[['', 'No'], ['no_contesta', `No lo cogen (+${fmtPts(PUNTOS_LLAMADA.no_contesta)})`], ['seguimiento', `Llamada de seguimiento (+${fmtPts(PUNTOS_LLAMADA.seguimiento)})`]].map(([id, label]) => (
+                    <button key={id || 'no'} type="button" onClick={() => setLlamada(id)}
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${llamada === id ? 'bg-brand-900 text-white border-brand-900' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      <Phone className="w-3 h-3 inline -mt-0.5 mr-1" />{label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {nueva ? null : seguimientos === null ? (
@@ -1123,65 +1136,88 @@ function GraficaEmpresas({ users, companies }) {
 }
 
 // Puntos por persona en [desde, hasta]. Lo usan el panel de admin (Actividad) y Puntuación.
-// Cada «contacto» con una empresa (un cambio de estado y/o una nota de una persona en el mismo instante)
-// puntúa según LLAMADAS: la primera vez que se contacta es positiva o negativa según el estado al que pasa,
-// y los siguientes contactos son llamadas de seguimiento. Se recorre todo el historial (también lo anterior
-// al periodo) para saber si una empresa ya estaba contactada; solo suman los contactos de dentro del periodo.
-function calcularPuntos({ todo, companies, users, desde, hasta }) {
+// Cada empresa asignada suma PUNTOS_ESTADO de su estado actual, y cuenta en el periodo en el que
+// llegó a ese estado (último cambio de estado del historial). Si no hay registro de cuándo,
+// solo cuenta en periodos que empiezan a inicio de curso o antes.
+// Cada llamada del periodo (PUNTOS_LLAMADA) suma aparte para el responsable actual de la empresa.
+// ajustes: filas de puntos_auto_ajustes { clave, puntos }; sustituyen a los puntos calculados de esa fila.
+function calcularPuntos({ todo, companies, users, desde, hasta, ajustes = [] }) {
   const ini = new Date(desde + 'T00:00:00')
   const fin = new Date(diaMas(hasta, 1) + 'T00:00:00')
   const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
-  const empresaDe = new Map(companies.map((c) => [c.id, c]))
+  const ajusteDe = Object.fromEntries(ajustes.map((a) => [a.clave, a]))
+
+  const llegada = {}
+  for (const h of todo) {
+    if (h.accion !== 'estado') continue
+    const prev = llegada[h.empresa_id]
+    if (!prev || new Date(h.creado) >= new Date(prev.creado)) llegada[h.empresa_id] = h
+  }
 
   const resumen = {}
-  const de = (id) => (resumen[id] ||= { id, nombre: nombreDeUsuario(id), positivas: 0, negativas: 0, seguimientos: 0, becas: 0, puntos: 0, filas: [] })
-
-  // Historial de cada empresa en orden cronológico, agrupado en contactos (misma persona y misma hora)
-  const porEmpresa = new Map()
-  for (const h of todo) {
-    if ((h.accion !== 'estado' && h.accion !== 'nota') || !empresaDe.has(h.empresa_id)) continue
-    if (!porEmpresa.has(h.empresa_id)) porEmpresa.set(h.empresa_id, [])
-    porEmpresa.get(h.empresa_id).push(h)
+  const de = (id) => (resumen[id] ||= { id, nombre: nombreDeUsuario(id), contactadas: 0, cerradas: 0, becas: 0, noContesta: 0, seguimientos: 0, puntos: 0, filas: [] })
+  const sumar = (r, fila) => {
+    const aj = ajusteDe[fila.clave]
+    if (aj) { fila.original = fila.puntos; fila.puntos = Number(aj.puntos) || 0 }
+    r.puntos += fila.puntos
+    r.filas.push(fila)
   }
-  for (const [empresaId, filas] of porEmpresa) {
-    filas.sort((a, b) => new Date(a.creado) - new Date(b.creado) || (a.id || 0) - (b.id || 0))
-    const contactos = new Map()
-    for (const h of filas) {
-      const k = `${h.usuario_id}|${h.creado}`
-      const c = contactos.get(k) || { usuario_id: h.usuario_id, creado: h.creado, estado: null }
-      if (h.accion === 'estado') c.estado = h.estado_nuevo
-      contactos.set(k, c)
-    }
 
-    let contactada = false
-    for (const c of contactos.values()) {
-      if (c.estado && SIN_CONTACTO.includes(c.estado)) continue // no se ha llegado a hablar con la empresa
-      const tipo = contactada ? 'seguimiento' : LLAMADA_POR_ESTADO[c.estado]
-      if (!tipo) continue
-      contactada = true
-      const cuando = new Date(c.creado)
-      const emp = empresaDe.get(empresaId)
-      if (!emp.responsable || cuando < ini || cuando >= fin) continue
-      const r = de(emp.responsable)
-      const pts = LLAMADAS[tipo].pts
-      r.puntos += pts
-      if (tipo === 'positiva') r.positivas++; else if (tipo === 'negativa') r.negativas++; else r.seguimientos++
-      if (c.estado === 'beca') r.becas++
-      r.filas.push({ id: `e-${empresaId}-${c.creado}`, tipo, detalle: LLAMADAS[tipo].label, empresa_nombre: emp.nombre, estado: c.estado || emp.estado, creado: c.creado, puntos: pts })
-    }
+  for (const c of companies) {
+    const pts = PUNTOS_ESTADO[c.estado] ?? 0
+    if (!c.responsable || !pts) continue
+    const l = llegada[c.id]
+    const cuando = l && l.estado_nuevo === c.estado ? l.creado : null
+    const dentro = cuando ? new Date(cuando) >= ini && new Date(cuando) < fin : desde <= INICIO_CURSO()
+    if (!dentro) continue
+    const r = de(c.responsable)
+    if (pts >= 3) r.cerradas++; else r.contactadas++
+    if (c.estado === 'beca') r.becas++
+    sumar(r, { id: `e-${c.id}`, clave: `e:${c.id}:${c.responsable}:${c.estado}`, tipo: 'empresa', empresa_nombre: c.nombre, estado: c.estado, creado: cuando, puntos: pts })
+  }
+
+  // Llamadas: solo de empresas que siguen en el CRM y tienen responsable
+  const empresaDe = Object.fromEntries(companies.map((c) => [c.id, c]))
+  for (const h of todo) {
+    const tipo = h.accion === 'llamada' ? h.estado_nuevo : h.accion === 'estado' && h.estado_nuevo === 'no_contesta' ? 'no_contesta' : null
+    const emp = empresaDe[h.empresa_id]
+    if (!PUNTOS_LLAMADA[tipo] || !emp?.responsable) continue
+    const t = new Date(h.creado)
+    if (t < ini || t >= fin) continue
+    const r = de(emp.responsable)
+    if (tipo === 'no_contesta') r.noContesta++; else r.seguimientos++
+    sumar(r, { id: `h-${h.id}`, clave: `h:${h.id}`, tipo: 'llamada', llamada: tipo, empresa_nombre: emp.nombre, creado: h.creado, puntos: PUNTOS_LLAMADA[tipo] })
   }
 
   users.forEach((u) => de(u.id))
-  for (const r of Object.values(resumen)) r.filas.sort((a, b) => new Date(b.creado || 0) - new Date(a.creado || 0))
+  for (const r of Object.values(resumen)) {
+    r.puntos = Math.round(r.puntos * 100) / 100
+    r.filas.sort((a, b) => new Date(b.creado || 0) - new Date(a.creado || 0))
+  }
   const lista = Object.values(resumen).sort((a, b) => b.puntos - a.puntos || a.nombre.localeCompare(b.nombre))
   return { lista }
 }
+
+// Etiqueta de una fila de puntos automáticos: el estado de la empresa o el tipo de llamada
+const EtiquetaAuto = ({ fila }) => fila.tipo === 'llamada' ? (
+  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap ${accionDe('llamada').color}`}>
+    <Phone className="w-3 h-3" />{LLAMADA_LABEL[fila.llamada]}
+  </span>
+) : <Badge estadoId={fila.estado} />
+// Puntos de una fila automática; si un admin los ha cambiado, el valor calculado sale tachado al lado
+const PuntosAuto = ({ fila }) => (
+  <span className="shrink-0 text-right tabular-nums">
+    {fila.original !== undefined && <span className="mr-1 text-slate-400 line-through">{signo(fila.original)}</span>}
+    <span className={fila.puntos ? 'text-slate-700 font-semibold' : 'text-slate-300'}>{signo(fila.puntos)}</span>
+  </span>
+)
 
 // ---------- Actividad y puntos del equipo (a partir del historial) ----------
 function Actividad({ users, companies }) {
   const [desde, setDesde] = useState(INICIO_CURSO())
   const [hasta, setHasta] = useState(HOY())
   const [todo, setTodo] = useState(null) // historial completo hasta «hasta»
+  const [ajustes, setAjustes] = useState([]) // puntos automáticos cambiados a mano (puntos_auto_ajustes)
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
   const [abierto, setAbierto] = useState('')
@@ -1198,6 +1234,7 @@ function Actividad({ users, companies }) {
       .order('id', { ascending: false }))
       .then(setTodo)
       .catch((e) => { setErr(e.message); setTodo([]) })
+    supabase.from('puntos_auto_ajustes').select('clave, puntos').then(({ data }) => setAjustes(data || []))
   }, [hasta, recarga])
 
   // Movimientos del historial cuya empresa ya no existe (se borró desde el CRM).
@@ -1245,11 +1282,11 @@ function Actividad({ users, companies }) {
     }
   }
 
-  const { lista } = calcularPuntos({ todo: todo || [], companies, users, desde, hasta })
+  const { lista } = calcularPuntos({ todo: todo || [], companies, users, desde, hasta, ajustes })
 
   const exportar = () => {
-    const cab = ['Persona', 'Llamadas positivas (2 pts)', 'Llamadas negativas (1 pt)', 'Seguimientos (1,5 pts)', 'Prácticas', 'Puntos']
-    const csv = [cab, ...lista.map((d) => [d.nombre, d.positivas, d.negativas, d.seguimientos, d.becas, d.puntos])]
+    const cab = ['Persona', 'Empresas contactadas (1 pt)', 'Empresas cerradas (3 pts)', 'Llamadas no cogidas (0,5 pts)', 'Llamadas de seguimiento (3 pts)', 'Prácticas', 'Puntos']
+    const csv = [cab, ...lista.map((d) => [d.nombre, d.contactadas, d.cerradas, d.noContesta, d.seguimientos, d.becas, fmtPts(d.puntos)])]
       .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
@@ -1325,9 +1362,10 @@ function Actividad({ users, companies }) {
             <thead>
               <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
                 <th className="text-left font-medium pb-2">Persona</th>
-                <th className="font-medium pb-2" title="Llamadas positivas: la empresa atiende y se le envía el correo (2 puntos)">Positivas</th>
-                <th className="font-medium pb-2" title="Llamadas negativas: la empresa atiende y dice que no (1 punto)">Negativas</th>
-                <th className="font-medium pb-2" title="Llamadas de seguimiento a empresas ya contactadas (1,5 puntos)">Segu.</th>
+                <th className="font-medium pb-2" title="Empresas contactadas (1 punto)">Contact.</th>
+                <th className="font-medium pb-2" title="Empresas cerradas: más adelante, otra comunidad, ya no existe, no quieren o práctica (3 puntos)">Cerradas</th>
+                <th className="font-medium pb-2" title="Llamadas en las que no lo cogen (0,5 puntos cada una)">No cogen</th>
+                <th className="font-medium pb-2" title="Llamadas de seguimiento (3 puntos cada una)">Seguim.</th>
                 <th className="font-medium pb-2">Prácticas</th>
                 <th className="font-medium pb-2 pl-3">Puntos</th>
               </tr>
@@ -1343,29 +1381,28 @@ function Actividad({ users, companies }) {
                       <ChevronRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${abierto === d.id ? 'rotate-90' : ''}`} />
                       {d.nombre}
                     </td>
-                    <td className="text-slate-500">{d.positivas}</td>
-                    <td className="text-slate-500">{d.negativas}</td>
+                    <td className="text-slate-500">{d.contactadas}</td>
+                    <td className="text-slate-500">{d.cerradas}</td>
+                    <td className="text-slate-500">{d.noContesta}</td>
                     <td className="text-slate-500">{d.seguimientos}</td>
                     <td className={d.becas ? 'text-emerald-700 font-semibold' : 'text-slate-300'}>{d.becas}</td>
-                    <td className="font-bold text-slate-900 pl-3">{d.puntos}</td>
+                    <td className="font-bold text-slate-900 pl-3">{fmtPts(d.puntos)}</td>
                   </tr>
                   {abierto === d.id && (
                     <tr>
-                      <td colSpan={6} className="bg-slate-50 px-3 py-3">
+                      <td colSpan={7} className="bg-slate-50 px-3 py-3">
                         {d.filas.length === 0 ? (
                           <p className="text-xs text-slate-400">Sin puntos en este periodo.</p>
                         ) : (
                           <ol className="space-y-1.5 max-h-72 overflow-y-auto">
                             {d.filas.map((h) => (
                               <li key={h.id} className="flex items-center gap-2 text-xs">
-                                <Badge estadoId={h.estado} />
+                                <EtiquetaAuto fila={h} />
                                 <span className="flex-1 min-w-0 text-slate-600 truncate">
-                                  <strong className="text-slate-800">{h.empresa_nombre}</strong>{h.detalle ? ` · ${h.detalle}` : ''}
+                                  <strong className="text-slate-800">{h.empresa_nombre}</strong>
                                 </span>
                                 <span className="shrink-0 text-slate-400">{h.creado ? fecha(h.creado) : 'sin fecha'}</span>
-                                <span className={`shrink-0 w-8 text-right tabular-nums ${h.puntos ? 'text-slate-700 font-semibold' : 'text-slate-300'}`}>
-                                  +{fmtPts(h.puntos)}
-                                </span>
+                                <PuntosAuto fila={h} />
                               </li>
                             ))}
                           </ol>
@@ -1381,12 +1418,12 @@ function Actividad({ users, companies }) {
       )}
 
       <p className="text-xs text-slate-400 mt-4 leading-relaxed">
-        Baremo de la Guía de Puntuaciones (por llamada, para el responsable de la empresa; sin tope por empresa): llamada positiva
-        (la empresa atiende y se le envía el correo: mail enviado, muy interesados o práctica) 2 · llamada negativa
-        (para más adelante, otra comunidad o no quieren) 1 · llamada de seguimiento a una empresa ya contactada (cualquier
-        nota o cambio de estado posterior) 1,5 · no lo cogen, ya no existe y las altas 0. Las reuniones y las prácticas
-        conseguidas se anotan aparte en Puntuación. Se cambia en <code>LLAMADAS</code> y <code>LLAMADA_POR_ESTADO</code> al principio
-        de App.jsx. Haz clic en una persona para ver el desglose.
+        Baremo actual (por empresa, según su estado actual y para quien la tiene asignada; máximo 3 por empresa):
+        sin contactar o no lo cogen 0 · mail enviado o muy interesados 1 · para más adelante, otra comunidad, ya no existe,
+        no quieren o práctica conseguida 3. Si una empresa vuelve a un estado anterior, sus puntos bajan. Además, cada llamada suma
+        para el responsable de la empresa: no lo cogen 0,5 y llamada de seguimiento 3. Las notas y las altas no puntúan.
+        Se cambia en <code>PUNTOS_ESTADO</code> y <code>PUNTOS_LLAMADA</code> al principio de App.jsx. Los cambios a mano de los admins
+        (en Puntuación) ya están aplicados. Haz clic en una persona para ver el desglose.
       </p>
     </div>
   )
@@ -1410,8 +1447,9 @@ const CentroBadge = ({ centro }) => centro
 const signo = (n) => `${n > 0 ? '+' : ''}${fmtPts(n)}`
 
 // Apuntes de una persona por categoría + los puntos automáticos de empresas (si los hay)
-function Desglose({ apuntes, auto, onEditar, onBorrar }) {
-  const hayAuto = auto?.puntos > 0
+// onAjustar (solo admin): permite cambiar o quitar los puntos de cada fila automática
+function Desglose({ apuntes, auto, onEditar, onBorrar, onAjustar }) {
+  const hayAuto = auto?.filas?.length > 0
   let grupos = agruparPorCategoria(apuntes)
   // Los puntos automáticos de empresas son parte de H (GT Empresas): van dentro de ese grupo
   if (hayAuto) {
@@ -1433,7 +1471,9 @@ function Desglose({ apuntes, auto, onEditar, onBorrar }) {
               <p className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="font-medium text-slate-800">Contacto con empresas <span className="font-normal text-slate-400">(automático)</span>
                   <span className="block font-normal text-slate-500">
-                    {auto.positivas} positiva{auto.positivas !== 1 ? 's' : ''} · {auto.negativas} negativa{auto.negativas !== 1 ? 's' : ''} · {auto.seguimientos} seguimiento{auto.seguimientos !== 1 ? 's' : ''}
+                    {auto.contactadas} contactada{auto.contactadas !== 1 ? 's' : ''} · {auto.cerradas} cerrada{auto.cerradas !== 1 ? 's' : ''}
+                    {' · '}{auto.noContesta + auto.seguimientos} llamada{auto.noContesta + auto.seguimientos !== 1 ? 's' : ''}
+                    {auto.seguimientos ? ` (${auto.seguimientos} de seguimiento)` : ''}
                   </span>
                 </span>
                 <span className="shrink-0 tabular-nums font-semibold text-slate-800">{signo(auto.puntos)}</span>
@@ -1441,11 +1481,18 @@ function Desglose({ apuntes, auto, onEditar, onBorrar }) {
               <details className="mt-1">
                 <summary className="text-xs text-brand-600 cursor-pointer select-none">Ver el detalle</summary>
                 <ol className="mt-1.5 space-y-1 max-h-60 overflow-y-auto">
-                  {auto.filas.filter((h) => h.puntos).map((h) => (
+                  {auto.filas.filter((h) => onAjustar || h.puntos || h.original !== undefined).map((h) => (
                     <li key={h.id} className="flex items-center gap-2 text-xs">
-                      <Badge estadoId={h.estado} />
-                      <span className="flex-1 min-w-0 truncate text-slate-700">{h.empresa_nombre} <span className="text-slate-400">· {h.detalle}</span></span>
-                      <span className="shrink-0 w-8 text-right tabular-nums text-slate-700 font-semibold">+{fmtPts(h.puntos)}</span>
+                      <EtiquetaAuto fila={h} />
+                      <span className="flex-1 min-w-0 truncate text-slate-700">{h.empresa_nombre}</span>
+                      {h.creado && <span className="shrink-0 text-slate-400">{fechaCorta(isoDia(new Date(h.creado)))}</span>}
+                      <PuntosAuto fila={h} />
+                      {onAjustar && (
+                        <span className="shrink-0 flex gap-0.5 -my-1">
+                          <button onClick={() => onAjustar(h)} title="Cambiar los puntos" className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => onAjustar(h, 0)} title="Quitar los puntos" className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ol>
@@ -1463,7 +1510,7 @@ function Desglose({ apuntes, auto, onEditar, onBorrar }) {
                     {unidad && a.cantidad > 0 && Number(a.cantidad) !== 1 ? ` ×${fmtPts(a.cantidad)}` : ''}
                     {a.motivo && <span className="block text-slate-500">{a.motivo}</span>}
                   </span>
-                  <span className={`shrink-0 tabular-nums font-semibold ${Number(a.puntos) ? 'text-slate-800' : 'text-slate-300'}`}>{signo(Number(a.puntos))}</span>
+                  <span className={`shrink-0 tabular-nums font-semibold ${Number(a.puntos) < 0 ? 'text-rose-600' : Number(a.puntos) ? 'text-slate-800' : 'text-slate-300'}`}>{signo(Number(a.puntos))}</span>
                   {onEditar && (
                     <span className="shrink-0 flex gap-0.5 -my-1">
                       <button onClick={() => onEditar(a)} title="Editar" className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100"><Pencil className="w-3.5 h-3.5" /></button>
@@ -1480,7 +1527,8 @@ function Desglose({ apuntes, auto, onEditar, onBorrar }) {
   )
 }
 
-function Puntuacion({ users, me, isAdmin }) {
+// onPendientes(n): avisa a la barra lateral de cuántas solicitudes quedan por revisar (solo admin)
+function Puntuacion({ users, me, isAdmin, onPendientes }) {
   const hoy = HOY()
   const camps = campanas(hoy)
   const [campId, setCampId] = useState(camps[0].id)
@@ -1493,33 +1541,35 @@ function Puntuacion({ users, me, isAdmin }) {
   const [recarga, setRecarga] = useState(0)
   const [centro, setCentro] = useState('')
   const [abierto, setAbierto] = useState('')
-  const [modal, setModal] = useState(null) // null | { tipo: 'apunte', apunte?, persona? }
+  const [modal, setModal] = useState(null) // null | { tipo: 'apunte', modo?, apunte?, persona?, concepto?, solicitud? } | { tipo: 'ajuste', fila, persona, puntos? }
 
   useEffect(() => {
     let vivo = true
     setDatos(null); setErr('')
     ;(async () => {
       try {
-        const [res, rk, apuntes, pend] = await Promise.all([
+        const [res, rk, apuntes, pend, sols] = await Promise.all([
           supabase.rpc('puntuacion_resumen', { p_desde: camp.desde, p_hasta: camp.hasta }),
           conAuto ? supabase.rpc('ranking_datos', { p_hasta: hastaAuto }) : Promise.resolve({ data: null }),
           traerTodo(() => supabase.from('puntos').select('*')
             .gte('fecha', camp.desde).lte('fecha', camp.hasta)
             .order('fecha', { ascending: false }).order('id', { ascending: false })),
           isAdmin ? supabase.from('puntos').select('id', { count: 'exact', head: true }).is('usuario_id', null) : Promise.resolve({ count: 0 }),
+          // Solicitudes: el admin ve todas; cada persona, las suyas (de todas las campañas)
+          traerTodo(() => supabase.from('solicitudes_puntos').select('*').order('creado', { ascending: false }).order('id', { ascending: false })),
         ])
         if (res.error) throw res.error
         if (rk.error) throw rk.error
-        if (vivo) setDatos({ resumen: res.data || [], rk: rk.data, apuntes, pendientes: pend.count || 0 })
+        if (vivo) setDatos({ resumen: res.data || [], rk: rk.data, apuntes, pendientes: pend.count || 0, solicitudes: sols })
       } catch (e) {
-        if (vivo) { setErr(`No se ha podido cargar la puntuación: ${e.message}`); setDatos({ resumen: [], rk: null, apuntes: [], pendientes: 0 }) }
+        if (vivo) { setErr(`No se ha podido cargar la puntuación: ${e.message}`); setDatos({ resumen: [], rk: null, apuntes: [], pendientes: 0, solicitudes: [] }) }
       }
     })()
     return () => { vivo = false }
   }, [camp.id, recarga, isAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const lista = useMemo(
-    () => datos?.rk ? calcularPuntos({ todo: datos.rk.hist || [], companies: datos.rk.empresas || [], users, desde: camp.desde, hasta: hastaAuto }).lista : [],
+    () => datos?.rk ? calcularPuntos({ todo: datos.rk.hist || [], companies: datos.rk.empresas || [], users, desde: camp.desde, hasta: hastaAuto, ajustes: datos.rk.ajustes || [] }).lista : [],
     [datos, users, camp.desde, hastaAuto]
   )
   const autoDe = (id) => lista.find((d) => d.id === id)
@@ -1534,6 +1584,25 @@ function Puntuacion({ users, me, isAdmin }) {
     if (!confirm(`¿Borrar «${a.descripcion}» (${signo(Number(a.puntos))} pts)? No se puede deshacer.`)) return
     setErr(''); setInfo('')
     const { error } = await supabase.from('puntos').delete().eq('id', a.id)
+    if (error) setErr(error.message); else recargar()
+  }
+
+  const solicitudes = datos?.solicitudes || []
+  const pendientesRevisar = isAdmin ? solicitudes.filter((x) => x.estado === 'pendiente') : []
+  useEffect(() => { if (isAdmin && datos) onPendientes?.(pendientesRevisar.length) }, [datos]) // eslint-disable-line react-hooks/exhaustive-deps
+  const misSolicitudes = solicitudes.filter((x) => x.usuario_id === me.id)
+  const nombreDe = (id) => users.find((u) => u.id === id)?.nombre || '—'
+  const rechazar = async (sol) => {
+    const motivo = prompt(`¿Por qué se rechaza la solicitud de ${nombreDe(sol.usuario_id)}? (lo verá la persona)`)
+    if (motivo === null) return
+    setErr(''); setInfo('')
+    const { error } = await supabase.rpc('resolver_solicitud', { p_id: sol.id, p_aceptar: false, p_respuesta: motivo.trim() || null })
+    if (error) setErr(error.message); else { setInfo('Solicitud rechazada.'); recargar() }
+  }
+  const cancelar = async (sol) => {
+    if (!confirm(`¿Retirar tu solicitud «${sol.descripcion}»?`)) return
+    setErr(''); setInfo('')
+    const { error } = await supabase.from('solicitudes_puntos').delete().eq('id', sol.id)
     if (error) setErr(error.message); else recargar()
   }
 
@@ -1592,9 +1661,60 @@ function Puntuacion({ users, me, isAdmin }) {
         </Aviso>
       )}
 
+      {pendientesRevisar.length > 0 && (
+        <div className="card p-5 sm:p-6">
+          <h3 className="font-bold text-slate-900 mb-3 flex items-center gap-1.5">
+            <Inbox className="w-4 h-4 text-amber-600" />Solicitudes pendientes · {pendientesRevisar.length}
+          </h3>
+          <ul className="divide-y divide-slate-100">
+            {pendientesRevisar.map((sol) => (
+              <li key={sol.id} className="py-2.5 flex items-start gap-3 text-sm">
+                <div className="flex-1 min-w-0">
+                  <p className="text-slate-800"><strong>{nombreDe(sol.usuario_id)}</strong> · {sol.descripcion}
+                    {Number(sol.cantidad) > 0 && Number(sol.cantidad) !== 1 ? ` ×${fmtPts(sol.cantidad)}` : ''}</p>
+                  <p className="text-xs text-slate-500">{sol.categoria === 'INI' ? CATEGORIAS.INI.label : `${sol.categoria}. ${CATEGORIAS[sol.categoria]?.label}`} · {fechaCorta(sol.fecha)}</p>
+                  <p className="text-xs text-slate-600 mt-0.5 whitespace-pre-wrap break-words">{sol.motivo}</p>
+                </div>
+                <span className="shrink-0 tabular-nums font-semibold text-slate-800">{signo(Number(sol.puntos))}</span>
+                <span className="shrink-0 flex flex-col sm:flex-row gap-1">
+                  <button onClick={() => setModal({ tipo: 'apunte', modo: 'aceptar', solicitud: sol })} className={`${miniBtn} !bg-brand-900 !text-white !border-brand-900 hover:!bg-brand-700`}>Revisar y aceptar</button>
+                  <button onClick={() => rechazar(sol)} className={miniBtn}>Rechazar</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="card p-5 sm:p-6">
-        <h3 className="font-bold text-slate-900 mb-3">Mi desglose</h3>
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="font-bold text-slate-900">Mi desglose</h3>
+          <button onClick={() => setModal({ tipo: 'apunte', modo: 'solicitar' })} className={miniBtn}>
+            <Send className="w-3.5 h-3.5" />Solicitar puntos
+          </button>
+        </div>
         {datos === null ? <Cargando /> : <Desglose apuntes={apuntesDe(me.id)} auto={autoDe(me.id)} />}
+        {misSolicitudes.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Mis solicitudes</p>
+            <ul className="divide-y divide-slate-100">
+              {misSolicitudes.map((sol) => (
+                <li key={sol.id} className="flex items-start gap-3 text-xs py-1.5">
+                  <span className="shrink-0 w-14 text-slate-400">{fechaCorta(sol.fecha)}</span>
+                  <span className="flex-1 min-w-0 text-slate-700">
+                    <span className="font-medium text-slate-800">{sol.descripcion}</span>
+                    {sol.respuesta && <span className="block text-slate-500">Respuesta: {sol.respuesta}</span>}
+                  </span>
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full border text-[11px] font-semibold ${ESTADO_SOLICITUD[sol.estado].color}`}>{ESTADO_SOLICITUD[sol.estado].label}</span>
+                  <span className="shrink-0 tabular-nums font-semibold text-slate-800">{signo(Number(sol.puntos))}</span>
+                  {sol.estado === 'pendiente' && (
+                    <button onClick={() => cancelar(sol)} title="Retirar la solicitud" className="shrink-0 p-1 -my-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"><X className="w-3.5 h-3.5" /></button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="card overflow-hidden">
@@ -1604,6 +1724,9 @@ function Puntuacion({ users, me, isAdmin }) {
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => setModal({ tipo: 'apunte' })} className={`${miniBtn} !bg-brand-900 !text-white !border-brand-900 hover:!bg-brand-700`}>
                 <Plus className="w-3.5 h-3.5" />Dar puntos
+              </button>
+              <button onClick={() => setModal({ tipo: 'apunte', concepto: 'H_penalizacion' })} className={`${miniBtn} !text-rose-700 !border-rose-200 hover:!bg-rose-50`}>
+                <AlertTriangle className="w-3.5 h-3.5" />Penalizar
               </button>
               <button onClick={exportar} className={miniBtn}><Download className="w-3.5 h-3.5" />CSV</button>
             </div>
@@ -1641,10 +1764,16 @@ function Puntuacion({ users, me, isAdmin }) {
                     <Desglose
                       apuntes={apuntesDe(f.id)} auto={autoDe(f.id)}
                       onEditar={(a) => setModal({ tipo: 'apunte', apunte: a })} onBorrar={borrar}
+                      onAjustar={(fila, puntos) => setModal({ tipo: 'ajuste', fila, persona: f.id, puntos })}
                     />
-                    <button onClick={() => setModal({ tipo: 'apunte', persona: f.id })} className={`${miniBtn} mt-3`}>
-                      <Plus className="w-3.5 h-3.5" />Dar puntos a {f.nombre.split(' ')[0]}
-                    </button>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <button onClick={() => setModal({ tipo: 'apunte', persona: f.id })} className={miniBtn}>
+                        <Plus className="w-3.5 h-3.5" />Dar puntos a {f.nombre.split(' ')[0]}
+                      </button>
+                      <button onClick={() => setModal({ tipo: 'apunte', persona: f.id, concepto: 'H_penalizacion' })} className={`${miniBtn} !text-rose-700 !border-rose-200 hover:!bg-rose-50`}>
+                        <AlertTriangle className="w-3.5 h-3.5" />Penalizar
+                      </button>
+                    </div>
                   </div>
                 )}
               </Fragment>
@@ -1656,38 +1785,110 @@ function Puntuacion({ users, me, isAdmin }) {
       <p className="text-xs text-slate-500 px-1 leading-relaxed">
         La clasificación ordena primero por nivel (<strong>Práctica</strong>: ha conseguido una práctica de empresa; <strong>Mínimo</strong>: {MINIMO_GT_EMPRESAS} puntos
         de GT Empresas; <strong>Pendiente</strong>: el resto), luego por puntos totales y luego por puntos de GT Empresas.
-        Los puntos de GT Empresas incluyen los que se ganan solos al llevar empresas en el CRM (contactada 1, cerrada 3).
+        Los puntos de GT Empresas incluyen los que se ganan solos en el CRM: por empresa (contactada 1, cerrada 3) y por llamada
+        (no lo cogen 0,5, seguimiento 3). Si has hecho algo que no está anotado, pulsa «Solicitar puntos» y lo revisará un admin.
         {isAdmin ? ' Pulsa una persona para ver su desglose y editarlo.' : ' De los demás solo se ve el total; tu desglose está arriba.'} Una campaña es un año natural, de enero a diciembre.
       </p>
 
       {modal?.tipo === 'apunte' && (
         <ApunteModal
-          users={users} apunte={modal.apunte} personaInicial={modal.persona} camp={camp} hoy={hoy}
+          users={users} me={me} modo={modal.modo} apunte={modal.apunte} solicitud={modal.solicitud}
+          personaInicial={modal.persona} conceptoPedido={modal.concepto} camp={camp} hoy={hoy}
           onClose={() => setModal(null)}
-          onSaved={(n) => { setModal(null); setInfo(n ? `Listo: se ${n === 1 ? 'ha anotado 1 apunte' : `han anotado ${n} apuntes`}.` : 'Apunte guardado.'); recargar() }}
+          onSaved={(msg) => { setModal(null); setInfo(msg); recargar() }}
+        />
+      )}
+      {modal?.tipo === 'ajuste' && (
+        <AjusteModal
+          fila={modal.fila} persona={modal.persona} puntosIniciales={modal.puntos}
+          onClose={() => setModal(null)}
+          onSaved={(msg) => { setModal(null); setInfo(msg); recargar() }}
         />
       )}
     </div>
   )
 }
 
-// Dar puntos a una o varias personas, o editar un apunte
-function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSaved }) {
+// Estados de una solicitud de puntos
+const ESTADO_SOLICITUD = {
+  pendiente: { label: 'Pendiente', color: 'bg-amber-50 text-amber-800 border-amber-200' },
+  aceptada: { label: 'Aceptada', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  rechazada: { label: 'Rechazada', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+}
+
+// Cambiar o quitar los puntos de una fila automática (empresa o llamada). Se guarda en puntos_auto_ajustes por su clave.
+function AjusteModal({ fila, persona, puntosIniciales, onClose, onSaved }) {
+  const ajustada = fila.original !== undefined
+  const calculados = ajustada ? fila.original : fila.puntos
+  const [puntos, setPuntos] = useState(String(puntosIniciales ?? fila.puntos))
+  const [motivo, setMotivo] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const guardar = async () => {
+    setErr('')
+    if (String(puntos).trim() === '') return setErr('Escribe los puntos (0 para quitarlos).')
+    setBusy(true)
+    const { error } = await supabase.from('puntos_auto_ajustes')
+      .upsert({ clave: fila.clave, usuario_id: persona, puntos: aNum(puntos), motivo: motivo.trim() || null }, { onConflict: 'clave' })
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved('Puntos automáticos cambiados.')
+  }
+  const restaurar = async () => {
+    setBusy(true)
+    const { error } = await supabase.from('puntos_auto_ajustes').delete().eq('clave', fila.clave)
+    setBusy(false)
+    if (error) return setErr(error.message)
+    onSaved('Vuelven a contar los puntos automáticos.')
+  }
+
+  return (
+    <Modal ancho="max-w-md" onClose={onClose}>
+      <ModalHead onClose={onClose} sub={<p className="text-xs text-slate-500 mt-0.5">{fila.empresa_nombre}</p>}>Cambiar puntos automáticos</ModalHead>
+      <div className="px-6 py-5 space-y-4">
+        <p className="flex items-center gap-2 text-sm text-slate-600">
+          <EtiquetaAuto fila={fila} />El CRM da {signo(calculados)} pts{ajustada ? ` (ahora cuenta ${signo(fila.puntos)})` : ''}.
+        </p>
+        <div><Label>Puntos que cuentan</Label><Input inputMode="decimal" value={puntos} onChange={(e) => setPuntos(e.target.value)} autoFocus /></div>
+        <div><Label>Motivo (opcional)</Label><Input value={motivo} maxLength={500} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: llamada repetida" /></div>
+        {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
+        <div className="flex flex-wrap justify-end gap-2">
+          {ajustada && <Btn variant="ghost" onClick={restaurar} disabled={busy}>Volver al automático</Btn>}
+          <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn onClick={guardar} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : aNum(puntos) === 0 ? 'Quitar puntos' : 'Guardar'}</Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Formulario de un apunte. modo:
+//  - 'dar' (admin): dar puntos a una o varias personas, o editar un apunte (apunte). Incluye las penalizaciones.
+//  - 'solicitar' (cualquiera): pedir puntos para sí; queda pendiente en solicitudes_puntos.
+//  - 'aceptar' (admin): revisar una solicitud, ajustarla si hace falta y anotarla.
+function ApunteModal({ users, me, modo = 'dar', apunte, solicitud, personaInicial, conceptoPedido, camp: campVista, hoy, onClose, onSaved }) {
   const editar = !!apunte
-  const conceptoInicial = apunte ? (conceptoDe(apunte.concepto) ? apunte.concepto : `${apunte.categoria}_otro`) : 'h_reunion_conseguir'
-  const [personas, setPersonas] = useState(() => apunte ? [apunte.usuario_id] : personaInicial ? [personaInicial] : [])
+  const pidiendo = modo === 'solicitar'
+  const aceptando = modo === 'aceptar'
+  // Una solicitud se anota en la campaña de su fecha, aunque se esté viendo otra
+  const camp = aceptando ? campanaDe(solicitud.fecha) : campVista
+  const base0 = apunte || solicitud
+  const conceptoInicial = base0 ? (conceptoDe(base0.concepto) ? base0.concepto : `${base0.categoria}_otro`) : conceptoPedido || 'h_reunion_conseguir'
+  const [personas, setPersonas] = useState(() => base0 ? [base0.usuario_id] : pidiendo ? [me.id] : personaInicial ? [personaInicial] : [])
   const [buscar, setBuscar] = useState('')
   const [centroF, setCentroF] = useState('')
-  const [cat, setCat] = useState(apunte?.categoria || conceptoDe(conceptoInicial).cat)
+  const [cat, setCat] = useState(base0?.categoria || conceptoDe(conceptoInicial).cat)
   const [conceptoId, setConceptoId] = useState(conceptoInicial)
   const conc = conceptoDe(conceptoId)
   const libre = conc.min === undefined
-  const [cantidad, setCantidad] = useState(apunte ? String(apunte.cantidad ?? (conc.unidad ? 1 : '')) : conc.unidad ? '1' : '')
-  const [puntos, setPuntos] = useState(apunte ? String(apunte.puntos) : String(puntosSugeridos(conc, 1)))
-  const [manual, setManual] = useState(editar) // el admin ha tocado los puntos: dejar de sugerirlos
-  const [descripcion, setDescripcion] = useState(apunte && libre ? apunte.descripcion : '')
-  const [fecha, setFecha] = useState(apunte?.fecha || (dentroDe(camp, hoy) ? hoy : camp.hasta))
-  const [motivo, setMotivo] = useState(apunte?.motivo || '')
+  const [cantidad, setCantidad] = useState(base0 ? String(base0.cantidad ?? (conc.unidad ? 1 : '')) : conc.unidad ? '1' : '')
+  // Las penalizaciones se escriben en positivo y se guardan en negativo
+  const [puntos, setPuntos] = useState(base0 ? String(conc.penalizacion ? Math.abs(Number(base0.puntos)) : base0.puntos) : String(puntosSugeridos(conc, 1)))
+  const [manual, setManual] = useState(!!base0) // ya hay puntos escritos: dejar de sugerirlos
+  const [descripcion, setDescripcion] = useState(base0 && libre ? base0.descripcion : '')
+  const [fecha, setFecha] = useState(base0?.fecha || (dentroDe(camp, hoy) ? hoy : camp.hasta))
+  const [motivo, setMotivo] = useState(base0?.motivo || '')
   const [repartir, setRepartir] = useState(false)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1698,49 +1899,81 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
     setCantidad(cn.unidad ? '1' : '')
     setPuntos(String(puntosSugeridos(cn, 1)))
   }
-  const elegirCat = (c) => { setCat(c); elegirConcepto(conceptosDe(c)[0].id) }
+  const conceptosDeCat = (c) => conceptosDe(c).filter((x) => !(pidiendo && x.penalizacion))
+  const elegirCat = (c) => {
+    setCat(c)
+    // Si se estaba penalizando, se sigue penalizando en la categoría nueva
+    elegirConcepto(conc.penalizacion && !pidiendo ? `${c}_penalizacion` : conceptosDeCat(c)[0].id)
+  }
   const cambiarCantidad = (v) => { setCantidad(v); if (!manual) setPuntos(String(puntosSugeridos(conc, aNum(v) || 1))) }
 
   const q = buscar.trim().toLowerCase()
   const lista = users.filter((u) => (!centroF || u.centro === centroF) && (!q || u.nombre.toLowerCase().includes(q)))
   const alternar = (id) => setPersonas((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])
   const todosVisibles = lista.length > 0 && lista.every((u) => personas.includes(u.id))
-  const nombrePersona = users.find((u) => u.id === apunte?.usuario_id)?.nombre
+  const nombrePersona = users.find((u) => u.id === base0?.usuario_id)?.nombre
 
   const guardar = async () => {
     setErr('')
     if (personas.length === 0) return setErr('Elige al menos una persona.')
     if (String(puntos).trim() === '') return setErr('Escribe los puntos.')
-    if (libre && !descripcion.trim()) return setErr('Describe por qué se dan los puntos.')
+    if (libre && !conc.penalizacion && !descripcion.trim()) return setErr(pidiendo ? 'Describe qué has hecho.' : 'Describe por qué se dan los puntos.')
+    if ((conc.penalizacion || pidiendo) && !motivo.trim()) return setErr(pidiendo ? 'Explica qué has hecho para que el admin pueda revisarlo.' : 'Explica el motivo de la penalización.')
     if (!fecha || fecha < camp.desde || fecha > camp.hasta) return setErr(`La fecha tiene que estar dentro de ${camp.label} (${camp.desde} a ${camp.hasta}).`)
     const cant = conc.unidad ? aNum(cantidad) : null
     if (conc.unidad && !(cant > 0)) return setErr('La cantidad tiene que ser mayor que 0.')
-    const total = aNum(puntos)
+    const total = conc.penalizacion ? -Math.abs(aNum(puntos)) : aNum(puntos)
+    if (pidiendo && total < 0) return setErr('Los puntos solicitados no pueden ser negativos.')
     const cada = repartir && personas.length > 1 ? Math.round((total / personas.length) * 100) / 100 : total
     const base = {
       fecha, categoria: cat,
-      concepto: editar && conceptoId === conceptoInicial ? apunte.concepto : conceptoId,
-      descripcion: libre ? descripcion.trim() : conc.texto,
+      concepto: base0 && conceptoId === conceptoInicial ? base0.concepto : conceptoId,
+      descripcion: (libre && descripcion.trim()) || (conc.penalizacion ? 'Penalización' : conc.texto),
       cantidad: cant, puntos: cada, motivo: motivo.trim() || null,
     }
     setBusy(true)
-    const { error } = editar
-      ? await supabase.from('puntos').update(base).eq('id', apunte.id)
-      : await supabase.from('puntos').insert(personas.map((id) => ({ ...base, usuario_id: id })))
+    const { error } = pidiendo
+      ? await supabase.from('solicitudes_puntos').insert(base)
+      : aceptando
+        ? await supabase.rpc('resolver_solicitud', {
+          p_id: solicitud.id, p_aceptar: true,
+          // Si el admin no toca el texto, la respuesta queda vacía y el apunte lleva la explicación de la persona
+          p_respuesta: motivo.trim() && motivo.trim() !== solicitud.motivo ? motivo.trim() : null,
+          p_categoria: base.categoria, p_concepto: base.concepto, p_descripcion: base.descripcion,
+          p_cantidad: base.cantidad, p_puntos: base.puntos, p_fecha: base.fecha,
+        })
+        : editar
+          ? await supabase.from('puntos').update(base).eq('id', apunte.id)
+          : await supabase.from('puntos').insert(personas.map((id) => ({ ...base, usuario_id: id })))
     setBusy(false)
     if (error) return setErr(error.message)
-    onSaved(editar ? 0 : personas.length)
+    const n = personas.length
+    onSaved(pidiendo ? 'Solicitud enviada: un admin la revisará.'
+      : aceptando ? `Solicitud aceptada: ${signo(cada)} pts para ${nombrePersona || 'la persona'}.`
+        : editar ? 'Apunte guardado.'
+          : `Listo: se ${n === 1 ? 'ha anotado 1 apunte' : `han anotado ${n} apuntes`}.`)
   }
 
-  const conceptos = conceptosDe(cat)
+  const conceptos = conceptosDeCat(cat)
   const campoSel = 'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white'
+  const titulo = pidiendo ? 'Solicitar puntos'
+    : aceptando ? `Solicitud de ${nombrePersona || 'la persona'}`
+      : editar ? `Editar apunte de ${nombrePersona || 'la persona'}`
+        : conc.penalizacion ? 'Penalizar' : 'Dar puntos'
+  const textoBoton = pidiendo ? 'Enviar solicitud'
+    : aceptando ? 'Aceptar'
+      : editar ? 'Guardar'
+        : `${conc.penalizacion ? 'Penalizar' : 'Dar'}${personas.length > 1 ? ` a ${personas.length} personas` : conc.penalizacion ? '' : ' puntos'}`
   return (
     <Modal ancho="max-w-xl" onClose={onClose}>
-      <ModalHead onClose={onClose} sub={<p className="text-xs text-slate-500 mt-0.5">{camp.label}</p>}>
-        {editar ? `Editar apunte de ${nombrePersona || 'la persona'}` : 'Dar puntos'}
-      </ModalHead>
+      <ModalHead onClose={onClose} sub={<p className="text-xs text-slate-500 mt-0.5">{camp.label}</p>}>{titulo}</ModalHead>
       <div className="px-6 py-5 space-y-4">
-        {!editar && (
+        {pidiendo && (
+          <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            Elige qué has hecho según la rúbrica y explícalo. Un admin lo revisará y podrá ajustar los puntos antes de aceptarlo.
+          </p>
+        )}
+        {modo === 'dar' && !editar && (
           <div>
             <Label>Personas ({personas.length})</Label>
             <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1767,6 +2000,12 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
             </div>
           </div>
         )}
+        {aceptando && (
+          <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            <p className="font-semibold text-slate-700 mb-0.5">Lo que ha pedido ({signo(Number(solicitud.puntos))} pts):</p>
+            <p className="whitespace-pre-wrap break-words">{solicitud.motivo}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -1784,7 +2023,7 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
         </div>
         {conc.nota && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{conc.nota}</p>}
         {libre && (
-          <div><Label>Descripción</Label><Input value={descripcion} maxLength={200} onChange={(e) => setDescripcion(e.target.value)} placeholder="Qué se ha hecho" /></div>
+          <div><Label>Descripción{conc.penalizacion ? ' (opcional)' : ''}</Label><Input value={descripcion} maxLength={200} onChange={(e) => setDescripcion(e.target.value)} placeholder={conc.penalizacion ? 'Penalización' : 'Qué se ha hecho'} /></div>
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1792,7 +2031,7 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
             <div><Label>Cantidad ({conc.unidad})</Label><Input inputMode="decimal" value={cantidad} onChange={(e) => cambiarCantidad(e.target.value)} /></div>
           )}
           <div>
-            <Label>Puntos{personas.length > 1 && repartir ? ' (total)' : ''}</Label>
+            <Label>{conc.penalizacion ? 'Puntos a restar' : 'Puntos'}{personas.length > 1 && repartir ? ' (total)' : ''}</Label>
             <Input inputMode="decimal" value={puntos} onChange={(e) => { setPuntos(e.target.value); setManual(true) }} placeholder="0" />
           </div>
           <div><Label>Fecha</Label><Input type="date" value={fecha} min={camp.desde} max={camp.hasta} onChange={(e) => setFecha(e.target.value)} /></div>
@@ -1800,22 +2039,24 @@ function ApunteModal({ users, apunte, personaInicial, camp, hoy, onClose, onSave
         {!libre && conc.min !== conc.max && !manual && (
           <p className="text-xs text-slate-500 -mt-2">Rango de la rúbrica: {rangoTexto(conc)}. Se propone el mínimo; ajústalo según el trabajo.</p>
         )}
-        {!editar && personas.length > 1 && (
+        {modo === 'dar' && !editar && personas.length > 1 && (
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={repartir} onChange={(e) => setRepartir(e.target.checked)} />
             Repartir los puntos entre las {personas.length} personas (si no, cada una recibe los puntos completos)
           </label>
         )}
         <div>
-          <Label>Motivo (lo verá la persona)</Label>
+          <Label>{pidiendo ? 'Explica qué has hecho (lo verá el admin)' : aceptando ? 'Motivo (lo verá la persona; si lo cambias, también le sirve de respuesta)' : conc.penalizacion ? 'Motivo de la penalización (lo verá la persona)' : 'Motivo (lo verá la persona)'}</Label>
           <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} maxLength={500}
-            placeholder="Ej.: Feria de Empleo, 3 horas de stand"
+            placeholder={pidiendo ? 'Ej.: el 12/3 estuve 3 horas en el stand de la Feria de Empleo' : 'Ej.: Feria de Empleo, 3 horas de stand'}
             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-500" />
         </div>
         {err && <Aviso tono="error" icono={AlertCircle}>{err}</Aviso>}
         <div className="flex justify-end gap-2">
           <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-          <Btn onClick={guardar} disabled={busy}><Save className="w-4 h-4" />{busy ? 'Guardando…' : editar ? 'Guardar' : personas.length > 1 ? `Dar a ${personas.length} personas` : 'Dar puntos'}</Btn>
+          <Btn variant={conc.penalizacion && !editar ? 'danger' : undefined} onClick={guardar} disabled={busy}>
+            {pidiendo ? <Send className="w-4 h-4" /> : <Save className="w-4 h-4" />}{busy ? 'Guardando…' : textoBoton}
+          </Btn>
         </div>
       </div>
     </Modal>
@@ -2505,6 +2746,15 @@ export default function App() {
     cargar()
   }
 
+  // Solicitudes de puntos por revisar (aviso en la pestaña Puntos para los admins); se recuenta al cambiar de pestaña
+  const [nSolicitudes, setNSolicitudes] = useState(0)
+  const esAdmin = me?.rol === 'admin'
+  useEffect(() => {
+    if (!esAdmin) return
+    supabase.from('solicitudes_puntos').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente')
+      .then(({ count }) => setNSolicitudes(count || 0))
+  }, [esAdmin, tab])
+
   if (session === undefined) {
     return <div className="min-h-screen bg-surface flex items-center justify-center"><Cargando /></div>
   }
@@ -2613,6 +2863,9 @@ export default function App() {
               {id === 'empresas' && (nHoy + nAtrasadas + nSinMover) > 0 && (
                 <span className="ml-auto text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{nHoy + nAtrasadas + nSinMover}</span>
               )}
+              {id === 'puntuacion' && nSolicitudes > 0 && (
+                <span title="Solicitudes de puntos por revisar" className="ml-auto text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950">{nSolicitudes}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -2673,7 +2926,7 @@ export default function App() {
         ) : tab === 'plantillas' ? (
           <Plantillas users={users} me={me} isAdmin={isAdmin} />
         ) : tab === 'puntuacion' ? (
-          <Puntuacion users={users} me={me} isAdmin={isAdmin} />
+          <Puntuacion users={users} me={me} isAdmin={isAdmin} onPendientes={setNSolicitudes} />
         ) : tab === 'seguimiento' && isAdmin ? (
           <Seguimiento users={users} companies={companies} version={claveEmpresas} onAbrir={setModal} />
         ) : tab === 'equipo' && isAdmin ? (

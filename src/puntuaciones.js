@@ -31,7 +31,7 @@ export const CATEGORIAS = {
 }
 export const ORDEN_CATEGORIAS = Object.keys(CATEGORIAS)
 
-// Concepto: { id, cat, texto, min, max?, unidad?, nota? }
+// Concepto: { id, cat, texto, min, max?, unidad?, nota?, penalizacion? }
 //  - min/max: puntos (o rango de puntos) por unidad. Sin min = puntos libres.
 //  - unidad: «por qué» se multiplica (hora, reunión…). Sin unidad, la cantidad es 1.
 //  - nota: regla que el admin debe tener en cuenta (reparto, topes…). No se aplica sola.
@@ -158,11 +158,13 @@ export const CATALOGO = [
   c('m_presencia', 'M', 'Presencia en evento (Subasta, CP…)', 10),
 ]
 
-// Cada categoría admite además un concepto libre
+// Cada categoría admite además un concepto libre y una penalización (puntos libres que se guardan en negativo;
+// si es de H, también baja los puntos de GT Empresas)
 for (const cat of ORDEN_CATEGORIAS) {
   CATALOGO.push(c(`${cat}_otro`, cat, 'Otro (puntos libres)', undefined, undefined, {
     nota: cat === 'L' ? 'La tabla de puntos del GT IT aún no está publicada.' : undefined,
   }))
+  CATALOGO.push(c(`${cat}_penalizacion`, cat, 'Penalización (resta puntos)', undefined, undefined, { penalizacion: true }))
 }
 
 const POR_ID = Object.fromEntries(CATALOGO.map((x) => [x.id, x]))

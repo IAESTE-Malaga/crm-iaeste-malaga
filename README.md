@@ -8,8 +8,8 @@ Aplicación web para gestionar el contacto con empresas del comité: quién habl
 
 | Rol | Qué puede hacer |
 |---|---|
-| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas prioritarias), cambiar roles y centros, poner contraseñas temporales, dar y editar puntos de la rúbrica |
-| **Miembro** | Ver todas las empresas (las ajenas en solo lectura). Crear empresas (quedan asignadas a él) y, en las suyas, editar contacto, CIF, estado, notas y próximo contacto. Ver su desglose de puntos y el total de los demás |
+| **Admin** | Ver y editar todo, crear/borrar empresas, asignarlas, registrar prácticas (empresas prioritarias), cambiar roles y centros, poner contraseñas temporales, dar, editar y penalizar puntos de la rúbrica, ajustar los automáticos y resolver solicitudes de puntos |
+| **Miembro** | Ver todas las empresas (las ajenas en solo lectura). Crear empresas (quedan asignadas a él) y, en las suyas, editar contacto, CIF, estado, notas y próximo contacto. Registrar llamadas, ver su desglose de puntos y el total de los demás, y solicitar puntos |
 
 Las reglas están impuestas en la base de datos (políticas RLS y triggers), no solo en la interfaz. El primer usuario que se registra en una base vacía es admin. Siempre tiene que quedar al menos un admin.
 
@@ -68,6 +68,9 @@ Cada persona elige su **centro** (IDML, IFML, QMML, AQML o TLML) al registrarse;
 
 - Cada persona ve su desglose con motivos; de los demás, solo el total (RLS en la tabla `puntos` y RPC `puntuacion_resumen`).
 - Clasificación: nivel (Práctica > Mínimo de 30 pts de GT Empresas > Pendiente), total y GT Empresas.
+- Puntos automáticos: por empresa según su estado actual (`PUNTOS_ESTADO`) y por cada llamada, también para el responsable de la empresa (`PUNTOS_LLAMADA`: no lo cogen 0,5, seguimiento 3), registradas desde la ficha con la RPC `registrar_llamada`. Un admin puede cambiar o quitar los de una fila concreta (tabla `puntos_auto_ajustes`).
+- Penalizaciones: concepto «Penalización» de cualquier categoría; se guardan como apuntes con puntos negativos.
+- Solicitudes: cualquiera pide puntos (tabla `solicitudes_puntos`) y un admin la ajusta y acepta o la rechaza (RPC `resolver_solicitud`).
 - Al empezar campaña, el admin anota con **Dar puntos** la antigüedad (5 por campaña) y el arrastre (la mitad de los puntos, nada si eran menos de 10 o hubo práctica), categoría «Inicio de campaña».
 - Los apuntes pueden importarse sin cuenta (`usuario_id` nulo, con `socio_nombre`): se vinculan solos cuando alguien se registra con el mismo nombre. Importar datos reales (nombres) **no se hace desde el repo**, que es público: se aplica el SQL a mano con el CLI de Supabase.
 
