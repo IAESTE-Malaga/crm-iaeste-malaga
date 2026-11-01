@@ -76,18 +76,18 @@ const ACCIONES = {
 }
 const accionDe = (id) => ACCIONES[id] || { label: id, color: 'bg-slate-100 text-slate-600 border-slate-200' }
 
-// Baremo de puntos del club: cada empresa vale según su estado ACTUAL (máximo 3 por empresa).
-// No se acumula: si una empresa cambia de estado, sus puntos pasan a ser los del estado nuevo.
-// Los puntos son para la persona que tiene asignada la empresa. Las notas y las altas no puntúan.
-// «No lo cogen» no da puntos por estado: se paga por llamada (PUNTOS_LLAMADA).
-const PUNTOS_ESTADO = {
-  sin_contactar: 0, no_contesta: 0,
-  mail_enviado: 1, interesados: 1, segundo_plazo: 1,                      // ya contactada
-  mas_adelante: 3, otra_provincia: 3, no_existe: 3, rechazada: 3, beca: 3, // cerrada (3 en total)
-  lista_negra: 0,
-}
+// Baremo de puntos del club, por empresa (máximo 2) y para la persona que la tiene asignada:
+//  - con correo: se ha llegado a enviar el correo (mail enviado, muy interesados, 2º plazo o práctica), aunque
+//    después digan que no (2)
+//  - negativa: dicen que no (más adelante, otra comunidad, no quieren) sin haber llegado a enviar el correo (1)
+// Sin contactar, no lo cogen, ya no existe y lista negra no dan puntos de empresa. Las notas y las altas no puntúan.
+const PUNTOS_EMPRESA = { correo: 2, negativa: 1 }
+const EMPRESA_LABEL = { correo: 'Con correo', negativa: 'Llamada negativa' }
+const ESTADOS_CORREO = ['mail_enviado', 'interesados', 'segundo_plazo', 'beca']
+const ESTADOS_NEGATIVA = ['mas_adelante', 'otra_provincia', 'rechazada']
 // Además, cada llamada suma por separado (sí se acumula) para el responsable de la empresa, como lo de
-// estado. Cuentan las llamadas registradas en la ficha y cada vez que una empresa pasa a «No lo cogen».
+// empresa. Cuentan las llamadas registradas en la ficha y cada vez que una empresa pasa a «No lo cogen».
+// Ej.: llama, envía el correo y luego dicen que no = 2; si además hubo una llamada de seguimiento = 2 + 3.
 const PUNTOS_LLAMADA = { no_contesta: 0.5, seguimiento: 3 }
 const LLAMADA_LABEL = { no_contesta: 'No lo cogen', seguimiento: 'Seguimiento' }
 // Un seguimiento con cambio de estado deja dos filas en el historial (estado + nota) con la misma
@@ -577,7 +577,7 @@ function AccionesContacto({ emp }) {
 }
 
 // ---------- Modal de empresa ----------
-function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [], onSaved, onDeleted, onClose, onRefresh }) {
+function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [], irASeguimiento = false, onSaved, onDeleted, onClose, onRefresh }) {
   // Copia local: un envío de correo puede cambiar el estado de la empresa con el modal abierto
   const [empresa, setEmpresa] = useState(empresaInicial)
   const [recargaHist, setRecargaHist] = useState(0)
@@ -596,6 +596,9 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
   const [addPrac, setAddPrac] = useState(false)
   const practicas = empresa?.practicas || []
   const [hist, setHist] = useState(null) // null = cargando
+  // Abierta desde el desglose de puntos: se baja directamente al seguimiento
+  const seccionSeg = useRef(null)
+  useEffect(() => { if (irASeguimiento) setTimeout(() => seccionSeg.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }, [irASeguimiento])
 
   useEffect(() => {
     if (nueva) { setHist([]); return }
@@ -921,7 +924,7 @@ function EmpresaModal({ empresa: empresaInicial, users, isAdmin, me, todas = [],
               )}
             </div>
           </div>
-          <div className="pt-5 border-t border-slate-100">
+          <div ref={seccionSeg} className="pt-5 border-t border-slate-100 scroll-mt-4">
             <div className="flex items-center justify-between mb-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                 <History className="w-3.5 h-3.5" />Seguimiento
@@ -1136,8 +1139,9 @@ function GraficaEmpresas({ users, companies }) {
 }
 
 // Puntos por persona en [desde, hasta]. Lo usan el panel de admin (Actividad) y Puntuación.
-// Cada empresa asignada suma PUNTOS_ESTADO de su estado actual, y cuenta en el periodo en el que
-// llegó a ese estado (último cambio de estado del historial). Si no hay registro de cuándo,
+// Cada empresa asignada suma PUNTOS_EMPRESA (con correo si alguna vez pasó por ESTADOS_CORREO, si no
+// negativa si está en ESTADOS_NEGATIVA), y cuenta en el periodo en el que pasó por primera vez a un estado
+// con correo o, si es negativa, en el que llegó a su estado actual. Si no hay registro de cuándo,
 // solo cuenta en periodos que empiezan a inicio de curso o antes.
 // Cada llamada del periodo (PUNTOS_LLAMADA) suma aparte para el responsable actual de la empresa.
 // ajustes: filas de puntos_auto_ajustes { clave, puntos }; sustituyen a los puntos calculados de esa fila.
@@ -1147,15 +1151,18 @@ function calcularPuntos({ todo, companies, users, desde, hasta, ajustes = [] }) 
   const nombreDeUsuario = (id) => users.find((u) => u.id === id)?.nombre || '—'
   const ajusteDe = Object.fromEntries(ajustes.map((a) => [a.clave, a]))
 
-  const llegada = {}
+  const llegada = {} // último cambio de estado de cada empresa
+  const correo = {}  // primera vez que pasó a un estado con correo
   for (const h of todo) {
     if (h.accion !== 'estado') continue
+    const t = new Date(h.creado)
     const prev = llegada[h.empresa_id]
-    if (!prev || new Date(h.creado) >= new Date(prev.creado)) llegada[h.empresa_id] = h
+    if (!prev || t >= new Date(prev.creado)) llegada[h.empresa_id] = h
+    if (ESTADOS_CORREO.includes(h.estado_nuevo) && (!correo[h.empresa_id] || t < new Date(correo[h.empresa_id].creado))) correo[h.empresa_id] = h
   }
 
   const resumen = {}
-  const de = (id) => (resumen[id] ||= { id, nombre: nombreDeUsuario(id), contactadas: 0, cerradas: 0, becas: 0, noContesta: 0, seguimientos: 0, puntos: 0, filas: [] })
+  const de = (id) => (resumen[id] ||= { id, nombre: nombreDeUsuario(id), conCorreo: 0, negativas: 0, becas: 0, noContesta: 0, seguimientos: 0, puntos: 0, filas: [] })
   const sumar = (r, fila) => {
     const aj = ajusteDe[fila.clave]
     if (aj) { fila.original = fila.puntos; fila.puntos = Number(aj.puntos) || 0 }
@@ -1164,16 +1171,19 @@ function calcularPuntos({ todo, companies, users, desde, hasta, ajustes = [] }) 
   }
 
   for (const c of companies) {
-    const pts = PUNTOS_ESTADO[c.estado] ?? 0
-    if (!c.responsable || !pts) continue
+    if (!c.responsable || c.estado === 'lista_negra') continue
     const l = llegada[c.id]
-    const cuando = l && l.estado_nuevo === c.estado ? l.creado : null
+    let res, cuando
+    if (correo[c.id]) { res = 'correo'; cuando = correo[c.id].creado }
+    else if (ESTADOS_CORREO.includes(c.estado)) { res = 'correo'; cuando = null } // sin historial (importada)
+    else if (ESTADOS_NEGATIVA.includes(c.estado)) { res = 'negativa'; cuando = l && l.estado_nuevo === c.estado ? l.creado : null }
+    else continue
     const dentro = cuando ? new Date(cuando) >= ini && new Date(cuando) < fin : desde <= INICIO_CURSO()
     if (!dentro) continue
     const r = de(c.responsable)
-    if (pts >= 3) r.cerradas++; else r.contactadas++
+    if (res === 'correo') r.conCorreo++; else r.negativas++
     if (c.estado === 'beca') r.becas++
-    sumar(r, { id: `e-${c.id}`, clave: `e:${c.id}:${c.responsable}:${c.estado}`, tipo: 'empresa', empresa_nombre: c.nombre, estado: c.estado, creado: cuando, puntos: pts })
+    sumar(r, { id: `e-${c.id}`, clave: `e:${c.id}:${c.responsable}:${res}`, tipo: 'empresa', resultado: res, empresa_id: c.id, empresa_nombre: c.nombre, estado: c.estado, creado: cuando, puntos: PUNTOS_EMPRESA[res] })
   }
 
   // Llamadas: solo de empresas que siguen en el CRM y tienen responsable
@@ -1186,7 +1196,7 @@ function calcularPuntos({ todo, companies, users, desde, hasta, ajustes = [] }) 
     if (t < ini || t >= fin) continue
     const r = de(emp.responsable)
     if (tipo === 'no_contesta') r.noContesta++; else r.seguimientos++
-    sumar(r, { id: `h-${h.id}`, clave: `h:${h.id}`, tipo: 'llamada', llamada: tipo, empresa_nombre: emp.nombre, creado: h.creado, puntos: PUNTOS_LLAMADA[tipo] })
+    sumar(r, { id: `h-${h.id}`, clave: `h:${h.id}`, tipo: 'llamada', llamada: tipo, empresa_id: emp.id, empresa_nombre: emp.nombre, creado: h.creado, puntos: PUNTOS_LLAMADA[tipo] })
   }
 
   users.forEach((u) => de(u.id))
@@ -1285,8 +1295,8 @@ function Actividad({ users, companies }) {
   const { lista } = calcularPuntos({ todo: todo || [], companies, users, desde, hasta, ajustes })
 
   const exportar = () => {
-    const cab = ['Persona', 'Empresas contactadas (1 pt)', 'Empresas cerradas (3 pts)', 'Llamadas no cogidas (0,5 pts)', 'Llamadas de seguimiento (3 pts)', 'Prácticas', 'Puntos']
-    const csv = [cab, ...lista.map((d) => [d.nombre, d.contactadas, d.cerradas, d.noContesta, d.seguimientos, d.becas, fmtPts(d.puntos)])]
+    const cab = ['Persona', 'Empresas con correo (2 pts)', 'Llamadas negativas sin correo (1 pt)', 'Llamadas no cogidas (0,5 pts)', 'Llamadas de seguimiento (3 pts)', 'Prácticas', 'Puntos']
+    const csv = [cab, ...lista.map((d) => [d.nombre, d.conCorreo, d.negativas, d.noContesta, d.seguimientos, d.becas, fmtPts(d.puntos)])]
       .map((f) => f.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
       .join('\n')
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }))
@@ -1362,8 +1372,8 @@ function Actividad({ users, companies }) {
             <thead>
               <tr className="text-xs text-slate-400 uppercase tracking-wide text-right">
                 <th className="text-left font-medium pb-2">Persona</th>
-                <th className="font-medium pb-2" title="Empresas contactadas (1 punto)">Contact.</th>
-                <th className="font-medium pb-2" title="Empresas cerradas: más adelante, otra comunidad, ya no existe, no quieren o práctica (3 puntos)">Cerradas</th>
+                <th className="font-medium pb-2" title="Empresas a las que se ha enviado el correo, aunque después digan que no (2 puntos)">Correo</th>
+                <th className="font-medium pb-2" title="Llamadas negativas: dicen que no (más adelante, otra comunidad, no quieren) sin haber enviado el correo (1 punto)">Negat.</th>
                 <th className="font-medium pb-2" title="Llamadas en las que no lo cogen (0,5 puntos cada una)">No cogen</th>
                 <th className="font-medium pb-2" title="Llamadas de seguimiento (3 puntos cada una)">Seguim.</th>
                 <th className="font-medium pb-2">Prácticas</th>
@@ -1381,8 +1391,8 @@ function Actividad({ users, companies }) {
                       <ChevronRight className={`w-3.5 h-3.5 text-slate-300 transition-transform ${abierto === d.id ? 'rotate-90' : ''}`} />
                       {d.nombre}
                     </td>
-                    <td className="text-slate-500">{d.contactadas}</td>
-                    <td className="text-slate-500">{d.cerradas}</td>
+                    <td className="text-slate-500">{d.conCorreo}</td>
+                    <td className="text-slate-500">{d.negativas}</td>
                     <td className="text-slate-500">{d.noContesta}</td>
                     <td className="text-slate-500">{d.seguimientos}</td>
                     <td className={d.becas ? 'text-emerald-700 font-semibold' : 'text-slate-300'}>{d.becas}</td>
@@ -1400,6 +1410,7 @@ function Actividad({ users, companies }) {
                                 <EtiquetaAuto fila={h} />
                                 <span className="flex-1 min-w-0 text-slate-600 truncate">
                                   <strong className="text-slate-800">{h.empresa_nombre}</strong>
+                                  {h.resultado && <span className="text-slate-400"> · {EMPRESA_LABEL[h.resultado]}</span>}
                                 </span>
                                 <span className="shrink-0 text-slate-400">{h.creado ? fecha(h.creado) : 'sin fecha'}</span>
                                 <PuntosAuto fila={h} />
@@ -1418,11 +1429,12 @@ function Actividad({ users, companies }) {
       )}
 
       <p className="text-xs text-slate-400 mt-4 leading-relaxed">
-        Baremo actual (por empresa, según su estado actual y para quien la tiene asignada; máximo 3 por empresa):
-        sin contactar o no lo cogen 0 · mail enviado o muy interesados 1 · para más adelante, otra comunidad, ya no existe,
-        no quieren o práctica conseguida 3. Si una empresa vuelve a un estado anterior, sus puntos bajan. Además, cada llamada suma
-        para el responsable de la empresa: no lo cogen 0,5 y llamada de seguimiento 3. Las notas y las altas no puntúan.
-        Se cambia en <code>PUNTOS_ESTADO</code> y <code>PUNTOS_LLAMADA</code> al principio de App.jsx. Los cambios a mano de los admins
+        Baremo actual (por empresa, para quien la tiene asignada; máximo 2 por empresa): llamada negativa (dicen que no
+        sin haber enviado el correo: más adelante, otra comunidad o no quieren) 1 · se ha enviado el correo (mail enviado,
+        muy interesados, 2º plazo o práctica), aunque después digan que no, 2 · sin contactar, no lo cogen y ya no existe 0.
+        Además, cada llamada suma para el responsable de la empresa: no lo cogen 0,5 y llamada de seguimiento 3 (ej.: correo y
+        «no» tras una llamada de seguimiento = 2 + 3 = 5). Las notas y las altas no puntúan.
+        Se cambia en <code>PUNTOS_EMPRESA</code> y <code>PUNTOS_LLAMADA</code> al principio de App.jsx. Los cambios a mano de los admins
         (en Puntuación) ya están aplicados. Haz clic en una persona para ver el desglose.
       </p>
     </div>
@@ -1448,7 +1460,8 @@ const signo = (n) => `${n > 0 ? '+' : ''}${fmtPts(n)}`
 
 // Apuntes de una persona por categoría + los puntos automáticos de empresas (si los hay)
 // onAjustar (solo admin): permite cambiar o quitar los puntos de cada fila automática
-function Desglose({ apuntes, auto, onEditar, onBorrar, onAjustar }) {
+// onEmpresa(id): al pulsar una empresa del detalle automático se abre su ficha
+function Desglose({ apuntes, auto, onEditar, onBorrar, onAjustar, onEmpresa }) {
   const hayAuto = auto?.filas?.length > 0
   let grupos = agruparPorCategoria(apuntes)
   // Los puntos automáticos de empresas son parte de H (GT Empresas): van dentro de ese grupo
@@ -1471,7 +1484,7 @@ function Desglose({ apuntes, auto, onEditar, onBorrar, onAjustar }) {
               <p className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="font-medium text-slate-800">Contacto con empresas <span className="font-normal text-slate-400">(automático)</span>
                   <span className="block font-normal text-slate-500">
-                    {auto.contactadas} contactada{auto.contactadas !== 1 ? 's' : ''} · {auto.cerradas} cerrada{auto.cerradas !== 1 ? 's' : ''}
+                    {auto.conCorreo} con correo · {auto.negativas} negativa{auto.negativas !== 1 ? 's' : ''}
                     {' · '}{auto.noContesta + auto.seguimientos} llamada{auto.noContesta + auto.seguimientos !== 1 ? 's' : ''}
                     {auto.seguimientos ? ` (${auto.seguimientos} de seguimiento)` : ''}
                   </span>
@@ -1484,7 +1497,12 @@ function Desglose({ apuntes, auto, onEditar, onBorrar, onAjustar }) {
                   {auto.filas.filter((h) => onAjustar || h.puntos || h.original !== undefined).map((h) => (
                     <li key={h.id} className="flex items-center gap-2 text-xs">
                       <EtiquetaAuto fila={h} />
-                      <span className="flex-1 min-w-0 truncate text-slate-700">{h.empresa_nombre}</span>
+                      <span className="flex-1 min-w-0 truncate text-slate-700">
+                        {onEmpresa && h.empresa_id ? (
+                          <button onClick={() => onEmpresa(h.empresa_id)} title="Abrir el seguimiento de la empresa" className="text-brand-700 hover:underline">{h.empresa_nombre}</button>
+                        ) : h.empresa_nombre}
+                        {h.resultado && <span className="text-slate-400"> · {EMPRESA_LABEL[h.resultado]}</span>}
+                      </span>
                       {h.creado && <span className="shrink-0 text-slate-400">{fechaCorta(isoDia(new Date(h.creado)))}</span>}
                       <PuntosAuto fila={h} />
                       {onAjustar && (
@@ -1528,7 +1546,7 @@ function Desglose({ apuntes, auto, onEditar, onBorrar, onAjustar }) {
 }
 
 // onPendientes(n): avisa a la barra lateral de cuántas solicitudes quedan por revisar (solo admin)
-function Puntuacion({ users, me, isAdmin, onPendientes }) {
+function Puntuacion({ users, me, isAdmin, onPendientes, onAbrirEmpresa }) {
   const hoy = HOY()
   const camps = campanas(hoy)
   const [campId, setCampId] = useState(camps[0].id)
@@ -1693,7 +1711,7 @@ function Puntuacion({ users, me, isAdmin, onPendientes }) {
             <Send className="w-3.5 h-3.5" />Solicitar puntos
           </button>
         </div>
-        {datos === null ? <Cargando /> : <Desglose apuntes={apuntesDe(me.id)} auto={autoDe(me.id)} />}
+        {datos === null ? <Cargando /> : <Desglose apuntes={apuntesDe(me.id)} auto={autoDe(me.id)} onEmpresa={onAbrirEmpresa} />}
         {misSolicitudes.length > 0 && (
           <div className="mt-4 pt-4 border-t border-slate-100">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Mis solicitudes</p>
@@ -1762,7 +1780,7 @@ function Puntuacion({ users, me, isAdmin, onPendientes }) {
                 {abre && (
                   <div className="bg-slate-50 px-5 sm:px-6 py-4">
                     <Desglose
-                      apuntes={apuntesDe(f.id)} auto={autoDe(f.id)}
+                      apuntes={apuntesDe(f.id)} auto={autoDe(f.id)} onEmpresa={onAbrirEmpresa}
                       onEditar={(a) => setModal({ tipo: 'apunte', apunte: a })} onBorrar={borrar}
                       onAjustar={(fila, puntos) => setModal({ tipo: 'ajuste', fila, persona: f.id, puntos })}
                     />
@@ -1785,7 +1803,7 @@ function Puntuacion({ users, me, isAdmin, onPendientes }) {
       <p className="text-xs text-slate-500 px-1 leading-relaxed">
         La clasificación ordena primero por nivel (<strong>Práctica</strong>: ha conseguido una práctica de empresa; <strong>Mínimo</strong>: {MINIMO_GT_EMPRESAS} puntos
         de GT Empresas; <strong>Pendiente</strong>: el resto), luego por puntos totales y luego por puntos de GT Empresas.
-        Los puntos de GT Empresas incluyen los que se ganan solos en el CRM: por empresa (contactada 1, cerrada 3) y por llamada
+        Los puntos de GT Empresas incluyen los que se ganan solos en el CRM: por empresa (llamada negativa 1, con correo 2) y por llamada
         (no lo cogen 0,5, seguimiento 3). Si has hecho algo que no está anotado, pulsa «Solicitar puntos» y lo revisará un admin.
         {isAdmin ? ' Pulsa una persona para ver su desglose y editarlo.' : ' De los demás solo se ve el total; tu desglose está arriba.'} Una campaña es un año natural, de enero a diciembre.
       </p>
@@ -2672,6 +2690,8 @@ export default function App() {
   const [asignando, setAsignando] = useState(false)
   const [agenda, setAgenda] = useState('') // '' | 'hoy' | 'atrasadas'
   const [modal, setModal] = useState(null) // null | 'nueva' | empresa
+  const [modalSeg, setModalSeg] = useState(false) // la ficha se abre bajando al seguimiento
+  useEffect(() => { if (!modal) setModalSeg(false) }, [modal])
   const [aviso, setAviso] = useState('')
   const [cambiarPass, setCambiarPass] = useState('') // '' | 'normal' | 'recuperacion'
   const [movidas, setMovidas] = useState(null) // ids de empresas con nota o cambio de estado en los últimos SIN_MOVER.dias
@@ -2926,7 +2946,8 @@ export default function App() {
         ) : tab === 'plantillas' ? (
           <Plantillas users={users} me={me} isAdmin={isAdmin} />
         ) : tab === 'puntuacion' ? (
-          <Puntuacion users={users} me={me} isAdmin={isAdmin} onPendientes={setNSolicitudes} />
+          <Puntuacion users={users} me={me} isAdmin={isAdmin} onPendientes={setNSolicitudes}
+            onAbrirEmpresa={(id) => { const c = companies.find((x) => x.id === id); if (c) { setModalSeg(true); setModal(c) } }} />
         ) : tab === 'seguimiento' && isAdmin ? (
           <Seguimiento users={users} companies={companies} version={claveEmpresas} onAbrir={setModal} />
         ) : tab === 'equipo' && isAdmin ? (
@@ -3190,6 +3211,7 @@ export default function App() {
           isAdmin={isAdmin}
           me={me}
           todas={companies}
+          irASeguimiento={modalSeg}
           onSaved={async (m, idNueva) => {
             if (!idNueva) { setModal(null); cargar(); flash(m || 'Guardado ✓', m ? 6000 : 2500); return }
             // Empresa recién creada: se abre su ficha completa (con el hilo de correos) para escribirles

@@ -68,7 +68,7 @@ Cada persona elige su **centro** (IDML, IFML, QMML, AQML o TLML) al registrarse;
 
 - Cada persona ve su desglose con motivos; de los demás, solo el total (RLS en la tabla `puntos` y RPC `puntuacion_resumen`).
 - Clasificación: nivel (Práctica > Mínimo de 30 pts de GT Empresas > Pendiente), total y GT Empresas.
-- Puntos automáticos: por empresa según su estado actual (`PUNTOS_ESTADO`) y por cada llamada, también para el responsable de la empresa (`PUNTOS_LLAMADA`: no lo cogen 0,5, seguimiento 3), registradas desde la ficha con la RPC `registrar_llamada`. Un admin puede cambiar o quitar los de una fila concreta (tabla `puntos_auto_ajustes`).
+- Puntos automáticos: por empresa (`PUNTOS_EMPRESA`: 1 si dicen que no sin haber enviado el correo, 2 si se ha enviado el correo aunque luego digan que no) y por cada llamada, también para el responsable de la empresa (`PUNTOS_LLAMADA`: no lo cogen 0,5, seguimiento 3), registradas desde la ficha con la RPC `registrar_llamada`. Un admin puede cambiar o quitar los de una fila concreta (tabla `puntos_auto_ajustes`).
 - Penalizaciones: concepto «Penalización» de cualquier categoría; se guardan como apuntes con puntos negativos.
 - Solicitudes: cualquiera pide puntos (tabla `solicitudes_puntos`) y un admin la ajusta y acepta o la rechaza (RPC `resolver_solicitud`).
 - Al empezar campaña, el admin anota con **Dar puntos** la antigüedad (5 por campaña) y el arrastre (la mitad de los puntos, nada si eran menos de 10 o hubo práctica), categoría «Inicio de campaña».

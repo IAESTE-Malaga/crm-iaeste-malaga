@@ -152,8 +152,8 @@ export default function Guia({ isAdmin }) {
           Tu puntuación se compone de dos partes:
         </p>
         <Lista>
-          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): cada empresa puntúa según su estado actual (contactada 1, cerrada 3, máximo 3 por empresa).
-            Además, cada <B>llamada</B> suma: al añadir un seguimiento marca «¿Has llamado?» → <B>No lo cogen</B> (0,5) o <B>Llamada de seguimiento</B> (3). Pasar una empresa a «No lo cogen» ya cuenta como una llamada.</li>
+          <li><B>Puntos automáticos por tus empresas</B> (cuentan como GT Empresas): cada empresa puntúa 1 si dicen que no sin haber llegado a enviar el correo (llamada negativa) y 2 si se ha enviado el correo, aunque después digan que no (máximo 2 por empresa).
+            Además, cada <B>llamada</B> suma: al añadir un seguimiento marca «¿Has llamado?» → <B>No lo cogen</B> (0,5) o <B>Llamada de seguimiento</B> (3). Pasar una empresa a «No lo cogen» ya cuenta como una llamada. Ejemplo: llamas, envías el correo y en la llamada de seguimiento te dicen que no = 2 + 3 = 5.</li>
           <li><B>Puntos que anota un admin</B> por lo que haces en el comité local y en los grupos de trabajo (reuniones, stands, despacho, redes sociales, outgoing…), con la rúbrica de la campaña. Los ves en <B>Mi desglose</B> con la fecha y el motivo de cada uno.</li>
         </Lista>
         <p>
@@ -171,7 +171,7 @@ export default function Guia({ isAdmin }) {
             <li><B><History className="inline w-3.5 h-3.5 -mt-0.5" /> Seguimiento:</B> últimos cambios y notas de todo el equipo, filtrables por persona.</li>
             <li><B><Trophy className="inline w-3.5 h-3.5 -mt-0.5" /> Puntuación:</B> con <B>Dar puntos</B> eliges una o varias personas, la categoría y el concepto de la rúbrica (los puntos se rellenan solos y los puedes ajustar), la fecha y un motivo que verá la persona. Pulsa una persona de la clasificación para ver, editar o borrar sus apuntes.
               Antigüedad y arrastre se anotan al empezar la campaña con <B>Dar puntos</B> (categoría «Inicio de campaña»). Los apuntes importados de gente que aún no tiene cuenta se les asignan solos al registrarse con el mismo nombre.
-              Los puntos por empresas del CRM (contactada 1, cerrada 3) y por llamadas (no lo cogen 0,5, seguimiento 3) se suman solos como GT Empresas; en el desglose de cada persona puedes cambiar o quitar los de una empresa o llamada concreta (lápiz y papelera) y volver al automático. En <B>Equipo</B> sigue la tabla detallada.
+              Los puntos por empresas del CRM (llamada negativa 1, con correo 2) y por llamadas (no lo cogen 0,5, seguimiento 3) se suman solos como GT Empresas; en el desglose de cada persona puedes cambiar o quitar los de una empresa o llamada concreta (lápiz y papelera) y volver al automático. En <B>Equipo</B> sigue la tabla detallada.
               Con <B>Penalizar</B> restas puntos en la categoría que elijas (si es GT Empresas, también baja su mínimo). Las <B>solicitudes pendientes</B> salen arriba: «Revisar y aceptar» abre el formulario para ajustarla, o «Rechazar» con un motivo.</li>
             <li><B><Star className="inline w-3.5 h-3.5 -mt-0.5" /> Prioritarias:</B> al conseguir una práctica, registra año y nº de prácticas desde la ficha; la empresa pasa sola al apartado «Prioritarias».</li>
             <li><B>Asignación rápida:</B> filtra por «Sin asignar» en Empresas, marca las que quieras y asígnalas de golpe. También puedes exportar la lista a Excel.</li>
